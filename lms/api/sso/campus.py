@@ -14,6 +14,9 @@ def login_via_campus(key: str, user_details: dict):
         validate_campus_user(user_details)
         email = user_details.email
         frappe.local.login_manager.login_as(email)
+        frappe.db.commit()  # Commit the login state
+
+        frappe.log_error("SSO Debug", f"Logged in user: {frappe.session.user}")
 
         frappe.local.response["type"] = "redirect"
         frappe.local.response["location"] = "/lms"
