@@ -15,12 +15,8 @@ def login_via_campus(key: str, user_details: dict):
         email = user_details.email
         frappe.local.login_manager.login_as(email)
 
-        redirect_to = "/app/"
-        redirect_post_login(
-            desk_user=frappe.db.get_value("User", frappe.session.user, "user_type")
-            == "System User",
-            redirect_to=redirect_to,
-        )
+        frappe.local.response["type"] = "redirect"
+        frappe.local.response["location"] = "/lms"
 
     except Exception as e:
         frappe.log_error(
