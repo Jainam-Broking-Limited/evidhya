@@ -58,10 +58,7 @@ def validate_campus_user(user_details: dict):
 
     # Update user details from payload
     user_doc.update(
-        {
-            **user_details,
-            "roles": [{"role": "LMS Student"}],
-        }
+        {**user_details, "roles": [{"role": "LMS Student"}], "user_type": "System User"}
     )
 
     user_doc.save(ignore_permissions=True)
