@@ -30,11 +30,11 @@ def login_via_campus(key: str, user_details: dict):
         frappe.response["message"] = {
             "status": 1,
             "message": "Authentication success",
-            "api_key": user_details.api_key,
-            "api_secret": user_details.api_secret,
-            "username": user_details.username,
-            "email": user_details.email,
-            "role": user_details.roles[0].role,
+            "api_key": user_doc.api_key,
+            "api_secret": user_doc.api_secret,
+            "username": user_doc.username,
+            "email": user_doc.email,
+            "role": user_doc.roles[0].role,
         }
 
     except Exception as e:
