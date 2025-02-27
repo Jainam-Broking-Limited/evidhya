@@ -13,13 +13,29 @@ def login_via_campus(key: str, user_details: dict):
         user_details = frappe._dict(user_details)
         validate_campus_user(user_details)
         email = user_details.email
-        frappe.local.login_manager.login_as(email)
-        frappe.db.commit()  # Commit the login state
+        user_doc = frappe.get_doc("User", email)
+        if not user_doc.api_key or user_doc.api_secret:
+            api_secret = frappe.generate_hash(length=15)
+            # if api key is not set generate api key
+            if not user_details.api_key:
+                api_key = frappe.generate_hash(length=15)
+                user_details.api_key = api_key
+            user_details.api_secret = api_secret
+            user_details.save(ignore_permissions=True)
 
         frappe.log_error("SSO Debug", f"Logged in user: {frappe.session.user}")
 
         frappe.local.response["type"] = "redirect"
         frappe.local.response["location"] = "/lms"
+        frappe.response["message"] = {
+            "status": 1,
+            "message": "Authentication success",
+            "api_key": user_details.api_key,
+            "api_secret": user_details.api_secret,
+            "username": user_details.username,
+            "email": user_details.email,
+            "role": user_details.roles[0].role,
+        }
 
     except Exception as e:
         frappe.log_error(
@@ -66,3 +82,7 @@ def validate_campus_user(user_details: dict):
 
     user_doc.save(ignore_permissions=True)
     return True
+
+
+def get_keys(user: str = frappe.session.user):
+    user = frappe.get_doc("User", user)
