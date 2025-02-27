@@ -21,7 +21,7 @@ def login_via_campus(key: str, user_details: dict):
                 api_key = frappe.generate_hash(length=15)
                 user_details.api_key = api_key
             user_details.api_secret = api_secret
-            user_details.save(ignore_permissions=True)
+            user_doc.save(ignore_permissions=True)
 
         frappe.log_error("SSO Debug", f"Logged in user: {frappe.session.user}")
 
