@@ -3,7 +3,7 @@
 		class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
 	>
 		<Breadcrumbs :items="breadcrumbs" />
-		<div v-if="!readOnlyMode" class="space-x-2">
+		<div v-if="!readOnlyMode" class="flex items-center gap-x-2">
 			<Badge v-if="quizDetails.isDirty" theme="orange">
 				{{ __('Not Saved') }}
 			</Badge>
@@ -87,22 +87,29 @@
 			</div>
 			<div class="grid grid-cols-3 gap-5">
 				<div class="flex flex-col space-y-10">
-					<FormControl
+					<Switch
 						v-model="quizDetails.doc.show_answers"
-						type="checkbox"
+						size="sm"
 						:label="__('Show Answers')"
+						:description="
+							__('Display correct answers after each question is attempted.')
+						"
 					/>
-					<FormControl
+					<Switch
 						v-model="quizDetails.doc.show_submission_history"
-						type="checkbox"
+						size="sm"
 						:label="__('Show Submission History')"
+						:description="__('Allow users to view their past quiz attempts.')"
 					/>
 				</div>
 				<div class="flex flex-col space-y-5">
-					<FormControl
+					<Switch
 						v-model="quizDetails.doc.shuffle_questions"
-						type="checkbox"
+						size="sm"
 						:label="__('Shuffle Questions')"
+						:description="
+							__('Randomize the order of questions for each attempt.')
+						"
 					/>
 					<FormControl
 						v-if="quizDetails.doc.shuffle_questions"
@@ -111,15 +118,16 @@
 					/>
 				</div>
 				<div class="flex flex-col space-y-5">
-					<FormControl
+					<Switch
 						v-model="quizDetails.doc.enable_negative_marking"
-						type="checkbox"
+						size="sm"
 						:label="__('Enable Negative Marking')"
+						:description="__('Deduct marks for incorrect answers.')"
 					/>
 					<FormControl
 						v-if="quizDetails.doc.enable_negative_marking"
 						v-model="quizDetails.doc.marks_to_cut"
-						:label="__('Marks to Cut')"
+						:label="__('Marks to Deduct')"
 					/>
 				</div>
 			</div>
@@ -147,7 +155,7 @@
 				}"
 			>
 				<ListHeader
-					class="mb-2 grid items-center space-x-4 rounded bg-surface-gray-2 p-2"
+					class="mb-2 grid items-center gap-x-4 rounded bg-surface-gray-2 p-2"
 				>
 					<ListHeaderItem :item="item" v-for="item in questionColumns" />
 				</ListHeader>
@@ -194,11 +202,7 @@
 		v-model="showQuestionModal"
 		:questionDetail="currentQuestion"
 		v-model:quiz="quizDetails"
-		:title="
-			currentQuestion.question
-				? __('Edit the question')
-				: __('Add a new question')
-		"
+		:title="currentQuestion.question ? __('Edit Question') : __('Add Question')"
 	/>
 </template>
 <script setup>
@@ -218,6 +222,7 @@ import {
 	toast,
 	createDocumentResource,
 	Badge,
+	Switch,
 } from 'frappe-ui'
 import {
 	computed,
@@ -226,11 +231,11 @@ import {
 	onMounted,
 	inject,
 	onBeforeUnmount,
-	watch,
 } from 'vue'
 import { sessionStore } from '../stores/session'
 import { ClipboardList, ListChecks, Plus, Trash2 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
+import { sanitizeHTML } from '@/utils'
 import Question from '@/components/Modals/Question.vue'
 
 const { brand } = sessionStore()
@@ -251,19 +256,15 @@ const props = defineProps({
 	},
 })
 
-const questions = ref([])
+const questions = computed(() => {
+	return quizDetails.doc?.questions || []
+})
 
 onMounted(() => {
-	if (
-		props.quizID == 'new' &&
-		!user.data?.is_moderator &&
-		!user.data?.is_instructor
-	) {
+	if (!user.data?.is_moderator && !user.data?.is_instructor) {
 		router.push({ name: 'Courses' })
 	}
-	if (props.quizID !== 'new') {
-		quizDetails.reload()
-	}
+	quizDetails.reload()
 	window.addEventListener('keydown', keyboardShortcut)
 })
 
@@ -278,27 +279,18 @@ onBeforeUnmount(() => {
 	window.removeEventListener('keydown', keyboardShortcut)
 })
 
-watch(
-	() => props.quizID !== 'new',
-	(newVal) => {
-		if (newVal) {
-			quizDetails.reload()
-		}
-	}
-)
-
 const quizDetails = createDocumentResource({
 	doctype: 'LMS Quiz',
 	name: props.quizID,
 	auto: false,
-	onSuccess(doc) {
-		if (doc.questions && doc.questions.length > 0) {
-			questions.value = doc.questions.map((question) => question)
-		}
-	},
 })
 
+const validateTitle = () => {
+	quizDetails.doc.title = sanitizeHTML(quizDetails.doc.title.trim())
+}
+
 const submitQuiz = () => {
+	validateTitle()
 	quizDetails.setValue.submit(
 		{
 			...quizDetails.doc,
@@ -401,7 +393,7 @@ const breadcrumbs = computed(() => {
 	]
 
 	crumbs.push({
-		label: props.quizID == 'new' ? __('New Quiz') : quizDetails.doc?.title,
+		label: quizDetails.doc?.title,
 		route: { name: 'QuizForm', params: { quizID: props.quizID } },
 	})
 	return crumbs
@@ -409,7 +401,7 @@ const breadcrumbs = computed(() => {
 
 usePageMeta(() => {
 	return {
-		title: props.quizID == 'new' ? __('New Quiz') : quizDetails.doc?.title,
+		title: quizDetails.doc?.title,
 		icon: brand.favicon,
 	}
 })

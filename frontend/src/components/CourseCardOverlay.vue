@@ -10,7 +10,7 @@
 				{{ course.data.price }}
 			</div>
 			<div v-if="!readOnlyMode">
-				<div v-if="course.data.membership" class="space-y-2">
+				<div v-if="course.data.membership" class="space-y-2 mb-8">
 					<router-link
 						:to="{
 							name: 'Lesson',
@@ -37,7 +37,7 @@
 					<CertificationLinks :courseName="course.data.name" class="w-full" />
 				</div>
 				<router-link
-					v-else-if="course.data.paid_course"
+					v-else-if="course.data.paid_course && !isAdmin"
 					:to="{
 						name: 'Billing',
 						params: {
@@ -46,7 +46,7 @@
 						},
 					}"
 				>
-					<Button variant="solid" size="md" class="w-full">
+					<Button variant="solid" size="md" class="w-full mb-8">
 						<template #prefix>
 							<CreditCard class="size-4 stroke-1.5" />
 						</template>
@@ -56,17 +56,18 @@
 					</Button>
 				</router-link>
 				<Badge
-					v-else-if="course.data.disable_self_learning"
+					v-else-if="course.data.disable_self_learning && !isAdmin"
 					theme="blue"
 					size="lg"
+					class="mb-4"
 				>
-					{{ __('Contact the Administrator to enroll for this course.') }}
+					{{ __('Contact the Administrator to enroll for this course') }}
 				</Badge>
 				<Button
-					v-else-if="!user.data?.is_moderator && !is_instructor()"
+					v-else-if="!isAdmin"
 					@click="enrollStudent()"
 					variant="solid"
-					class="w-full"
+					class="w-full mb-8"
 					size="md"
 				>
 					<template #prefix>
@@ -88,54 +89,27 @@
 					</template>
 					{{ __('Get Certificate') }}
 				</Button>
-				<Button
-					v-if="user.data?.is_moderator || is_instructor()"
-					class="w-full mt-2"
-					size="md"
-					@click="showProgressSummary"
-				>
-					<template #prefix>
-						<TrendingUp class="size-4 stroke-1.5" />
-						{{ __('Progress Summary') }}
-					</template>
-				</Button>
-				<router-link
-					v-if="user?.data?.is_moderator || is_instructor()"
-					:to="{
-						name: 'CourseForm',
-						params: {
-							courseName: course.data.name,
-						},
-					}"
-				>
-					<Button variant="subtle" class="w-full mt-2" size="md">
-						<template #prefix>
-							<Pencil class="size-4 stroke-1.5" />
-						</template>
-						<span>
-							{{ __('Edit') }}
-						</span>
-					</Button>
-				</router-link>
 			</div>
-			<div class="space-y-4">
-				<div
-					class="font-medium text-ink-gray-9"
-					:class="{ 'mt-8': !readOnlyMode }"
-				>
+			<div class="space-y-3">
+				<div class="font-medium text-ink-gray-9">
 					{{ __('This course has:') }}
 				</div>
 				<div class="flex items-center text-ink-gray-9">
 					<BookOpen class="h-4 w-4 stroke-1.5" />
-					<span class="ml-2">
-						{{ course.data.lessons }} {{ __('Lessons') }}
+					<span class="ms-2">
+						{{ course.data.lessons }}
+						{{ course.data.lessons > 1 ? __('lessons') : __('lesson') }}
 					</span>
 				</div>
 				<div class="flex items-center text-ink-gray-9">
 					<Users class="h-4 w-4 stroke-1.5" />
-					<span class="ml-2">
+					<span class="ms-2">
 						{{ formatAmount(course.data.enrollments) }}
-						{{ __('Enrolled Students') }}
+						{{
+							course.data.enrollments > 1
+								? __('enrolled students')
+								: __('enrolled student')
+						}}
 					</span>
 				</div>
 				<div
@@ -143,8 +117,8 @@
 					class="flex items-center text-ink-gray-9"
 				>
 					<Star class="size-4 stroke-1.5 fill-yellow-500 text-transparent" />
-					<span class="ml-2">
-						{{ course.data.rating }} {{ __('Rating') }}
+					<span class="ms-2">
+						{{ course.data.rating }} {{ __('average rating') }}
 					</span>
 				</div>
 				<div
@@ -152,7 +126,7 @@
 					class="flex items-center font-semibold text-ink-gray-9"
 				>
 					<GraduationCap class="h-4 w-4 stroke-2" />
-					<span class="ml-2">
+					<span class="ms-2">
 						{{ __('Certificate of Completion') }}
 					</span>
 				</div>
@@ -161,18 +135,13 @@
 					class="flex items-center font-semibold text-ink-gray-9"
 				>
 					<GraduationCap class="h-4 w-4 stroke-2" />
-					<span class="ml-2">
+					<span class="ms-2">
 						{{ __('Paid Certificate after Evaluation') }}
 					</span>
 				</div>
 			</div>
 		</div>
 	</div>
-	<CourseProgressSummary
-		v-model="showProgressModal"
-		:courseName="course.data.name"
-		:enrollments="course.data.enrollments"
-	/>
 </template>
 <script setup>
 import {
@@ -188,15 +157,14 @@ import {
 import { computed, inject, ref } from 'vue'
 import { Badge, Button, call, createResource, toast } from 'frappe-ui'
 import { formatAmount } from '@/utils/'
-import { capture } from '@/telemetry'
 import { useRouter } from 'vue-router'
 import CertificationLinks from '@/components/CertificationLinks.vue'
-import CourseProgressSummary from '@/components/Modals/CourseProgressSummary.vue'
+import { useTelemetry } from 'frappe-ui/frappe'
 
 const router = useRouter()
 const user = inject('$user')
-const showProgressModal = ref(false)
 const readOnlyMode = window.read_only_mode
+const { capture } = useTelemetry()
 
 const props = defineProps({
 	course: {
@@ -214,13 +182,17 @@ const video_link = computed(() => {
 
 function enrollStudent() {
 	if (!user.data) {
-		toast.success(__('You need to login first to enroll for this course'))
+		toast.warning(__('You need to login first to enroll for this course'))
 		setTimeout(() => {
 			window.location.href = `/login?redirect-to=${window.location.pathname}`
 		}, 500)
 	} else {
-		call('lms.lms.doctype.lms_enrollment.lms_enrollment.create_membership', {
-			course: props.course.data.name,
+		call('frappe.client.insert', {
+			doc: {
+				doctype: 'LMS Enrollment',
+				course: props.course.data.name,
+				member: user.data.name,
+			},
 		})
 			.then(() => {
 				capture('enrolled_in_course', {
@@ -289,7 +261,7 @@ const fetchCertificate = () => {
 	})
 }
 
-const showProgressSummary = () => {
-	showProgressModal.value = true
-}
+const isAdmin = computed(() => {
+	return user.data?.is_moderator || is_instructor()
+})
 </script>

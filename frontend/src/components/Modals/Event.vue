@@ -14,7 +14,7 @@
 
 					<div class="flex flex-col space-y-4 text-sm text-ink-gray-8">
 						<Tooltip :text="__('Email ID')">
-							<div class="flex items-center space-x-2 w-fit">
+							<div class="flex items-center gap-x-2 w-fit">
 								<User class="h-4 w-4 stroke-1.5" />
 								<span>
 									{{ event.member }}
@@ -22,7 +22,10 @@
 							</div>
 						</Tooltip>
 						<Tooltip :text="__('Course')">
-							<div class="flex items-center space-x-2 w-fit">
+							<div
+								class="flex gap-x-2 w-fit cursor-pointer"
+								@click="openLink('course', event.course)"
+							>
 								<BookOpen class="h-4 w-4 stroke-1.5" />
 								<span>
 									{{ event.course_title }}
@@ -30,7 +33,10 @@
 							</div>
 						</Tooltip>
 						<Tooltip v-if="event.batch_title" :text="__('Batch')">
-							<div class="flex items-center space-x-2 w-fit">
+							<div
+								class="flex gap-x-2 w-fit cursor-pointer"
+								@click="openLink('batch', event.batch_name)"
+							>
 								<Users class="h-4 w-4 stroke-1.5" />
 								<span>
 									{{ event.batch_title }}
@@ -38,7 +44,7 @@
 							</div>
 						</Tooltip>
 						<Tooltip :text="__('Date')">
-							<div class="flex items-center space-x-2 w-fit">
+							<div class="flex items-center gap-x-2 w-fit">
 								<Calendar class="h-4 w-4 stroke-1.5" />
 								<span>
 									{{ dayjs(event.date).format('DD MMM YYYY') }}
@@ -46,7 +52,7 @@
 							</div>
 						</Tooltip>
 						<Tooltip :text="__('Time')">
-							<div class="flex items-center space-x-2 w-fit">
+							<div class="flex items-center gap-x-2 w-fit">
 								<Clock class="h-4 w-4 stroke-1.5" />
 								<span>
 									{{ formatTime(event.start_time) }} -
@@ -55,7 +61,7 @@
 							</div>
 						</Tooltip>
 					</div>
-					<div class="flex items-center space-x-2 mt-auto">
+					<div class="flex items-center gap-x-2 mt-auto">
 						<Button
 							v-if="certificate.name"
 							@click="openCertificate(certificate)"
@@ -66,7 +72,11 @@
 							</template>
 							{{ __('View Certificate') }}
 						</Button>
-						<Button v-else @click="openCallLink(event.venue)" class="w-full">
+						<Button
+							v-else-if="userIsEvaluator()"
+							@click="openCallLink(event.venue)"
+							class="w-full"
+						>
 							<template #prefix>
 								<Video class="h-4 w-4 stroke-1.5" />
 							</template>
@@ -76,41 +86,56 @@
 						</Button>
 					</div>
 				</div>
-				<Tabs :tabs="tabs" as="div" v-model="tabIndex" class="border-l w-1/2">
+				<Tabs :tabs="tabs" as="div" v-model="tabIndex" class="border-s w-1/2">
 					<template #tab-panel="{ tab }">
 						<div
 							v-if="tab.label == 'Evaluation'"
 							class="flex flex-col space-y-4 p-5"
 						>
 							<div class="flex items-center justify-between">
-								<Rating v-model="evaluation.rating" :label="__('Rating')" />
+								<Rating
+									v-model="evaluation.rating"
+									:label="__('Rating')"
+									:disabled="!userIsEvaluator()"
+								/>
 								<FormControl
 									type="select"
 									:options="statusOptions"
 									v-model="evaluation.status"
 									:label="__('Status')"
 									class="w-1/2"
+									:disabled="!userIsEvaluator()"
 								/>
 							</div>
 							<Textarea
 								v-model="evaluation.summary"
 								:label="__('Summary')"
 								:rows="7"
+								:disabled="!userIsEvaluator()"
 							/>
-							<Button variant="solid" @click="saveEvaluation()">
+							<Button
+								v-if="userIsEvaluator()"
+								variant="solid"
+								@click="saveEvaluation()"
+							>
 								{{ __('Save') }}
 							</Button>
 						</div>
 						<div v-else class="flex flex-col space-y-4 p-5">
-							<FormControl
-								type="checkbox"
+							<Switch
+								size="sm"
 								v-model="certificate.published"
 								:label="__('Published')"
+								:description="
+									__('Make this certificate visible to the participant.')
+								"
+								:disabled="!userIsEvaluator()"
 							/>
 							<Link
 								v-model="certificate.template"
 								:label="__('Template')"
 								doctype="Print Format"
+								:disabled="!userIsEvaluator()"
 								:filters="{
 									doc_type: 'LMS Certificate',
 								}"
@@ -118,14 +143,20 @@
 							<FormControl
 								type="date"
 								v-model="certificate.issue_date"
+								:disabled="!userIsEvaluator()"
 								:label="__('Issue Date')"
 							/>
 							<FormControl
 								type="date"
 								v-model="certificate.expiry_date"
+								:disabled="!userIsEvaluator()"
 								:label="__('Expiry Date')"
 							/>
-							<Button variant="solid" @click="saveCertificate()">
+							<Button
+								v-if="userIsEvaluator()"
+								variant="solid"
+								@click="saveCertificate()"
+							>
 								{{ __('Save') }}
 							</Button>
 						</div>
@@ -141,6 +172,7 @@ import {
 	Button,
 	FormControl,
 	createResource,
+	Switch,
 	Tabs,
 	Tooltip,
 	Textarea,
@@ -163,9 +195,12 @@ import Rating from '@/components/Controls/Rating.vue'
 import Link from '@/components/Controls/Link.vue'
 
 const show = defineModel()
+const user = inject('$user')
 const dayjs = inject('$dayjs')
 const tabIndex = ref(0)
 const showCertification = ref(false)
+const evaluation = reactive({})
+const certificate = reactive({})
 
 const props = defineProps({
 	event: {
@@ -174,9 +209,15 @@ const props = defineProps({
 	},
 })
 
-const evaluation = reactive({})
+watch(user, () => {
+	if (userIsEvaluator()) {
+		defaultTemplate.reload()
+	}
+})
 
-const certificate = reactive({})
+const userIsEvaluator = () => {
+	return user.data && user.data.name == props.event.evaluator
+}
 
 const defaultTemplate = createResource({
 	url: 'frappe.client.get_value',
@@ -190,7 +231,6 @@ const defaultTemplate = createResource({
 			},
 		}
 	},
-	auto: true,
 	onSuccess(data) {
 		certificate.template = data.value
 	},
@@ -207,7 +247,7 @@ const evaluationResource = createResource({
 			member: props.event.member,
 			course: props.event.course,
 			batch_name: props.event.batch_name,
-			date: props.event.date,
+			date_value: props.event.date,
 			start_time: props.event.start_time,
 			end_time: props.event.end_time,
 			status: evaluation.status,
@@ -304,7 +344,7 @@ const certificateDetails = createResource({
 		}
 	},
 	onError(err) {
-		certificate.template = defaultTemplate.data.value
+		certificate.template = defaultTemplate.data?.value
 	},
 	auto: false,
 })
@@ -345,6 +385,16 @@ const openCertificate = (certificate) => {
 			certificate.name
 		}&format=${encodeURIComponent(certificate.template)}`
 	)
+}
+
+const openLink = (type, name) => {
+	let url = ''
+	if (type === 'course') {
+		url = `/lms/courses/${name}`
+	} else if (type === 'batch') {
+		url = `/lms/batches/${name}#students`
+	}
+	window.open(url, '_blank')
 }
 
 const statusOptions = computed(() => {

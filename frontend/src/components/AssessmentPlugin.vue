@@ -26,28 +26,53 @@
 						v-model="quiz"
 						doctype="LMS Quiz"
 						:label="__('Select a quiz')"
+						placeholder=" "
 						:onCreate="(value, close) => redirectToForm()"
 					/>
-					<Link
-						v-else
-						v-model="assignment"
-						doctype="LMS Assignment"
-						:label="__('Select an assignment')"
-						:onCreate="(value, close) => redirectToForm()"
-					/>
+					<div v-else class="space-y-4">
+						<Link
+							v-if="filterAssignmentsByCourse"
+							v-model="assignment"
+							doctype="LMS Assignment"
+							:filters="{
+								course: route.params.courseName,
+							}"
+							placeholder=" "
+							:label="__('Select an Assignment')"
+							:onCreate="(value, close) => redirectToForm()"
+						/>
+						<Link
+							v-else
+							v-model="assignment"
+							doctype="LMS Assignment"
+							placeholder=" "
+							:label="__('Select an Assignment')"
+							:onCreate="(value, close) => redirectToForm()"
+						/>
+						<Switch
+							size="sm"
+							:description="__('Only show assignments from the current course')"
+							:label="__('Filter assignments by course')"
+							v-model="filterAssignmentsByCourse"
+						/>
+					</div>
 				</div>
 			</div>
 		</template>
 	</Dialog>
 </template>
 <script setup>
-import { Dialog } from 'frappe-ui'
-import { onMounted, ref, nextTick } from 'vue'
+import { Dialog, Switch } from 'frappe-ui'
+import { nextTick, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { getLmsRoute } from '@/utils/basePath'
 import Link from '@/components/Controls/Link.vue'
 
 const show = ref(false)
 const quiz = ref(null)
 const assignment = ref(null)
+const filterAssignmentsByCourse = ref(false)
+const route = useRoute()
 
 const props = defineProps({
 	type: {
@@ -71,7 +96,10 @@ const addAssessment = () => {
 }
 
 const redirectToForm = () => {
-	if (props.type == 'quiz') window.open('/lms/quizzes/new', '_blank')
-	else window.open('/lms/assignments/new', '_blank')
+	if (props.type == 'quiz') {
+		window.open(getLmsRoute('quizzes?new=true'), '_blank')
+	} else {
+		window.open(getLmsRoute('assignments?new=true'), '_blank')
+	}
 }
 </script>

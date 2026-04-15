@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { usersStore } from './stores/user'
 import { sessionStore } from './stores/session'
 import { useSettings } from './stores/settings'
+import { getLmsBasePath } from './utils/basePath'
 
 const routes = [
 	{
@@ -12,12 +13,12 @@ const routes = [
 	{
 		path: '/courses',
 		name: 'Courses',
-		component: () => import('@/pages/Courses.vue'),
+		component: () => import('@/pages/Courses/Courses.vue'),
 	},
 	{
 		path: '/courses/:courseName',
 		name: 'CourseDetail',
-		component: () => import('@/pages/CourseDetail.vue'),
+		component: () => import('@/pages/Courses/CourseDetail.vue'),
 		props: true,
 	},
 	{
@@ -29,7 +30,7 @@ const routes = [
 	{
 		path: '/courses/:courseName/certification',
 		name: 'CourseCertification',
-		component: () => import('@/pages/CourseCertification.vue'),
+		component: () => import('@/pages/Courses/CourseCertification.vue'),
 		props: true,
 	},
 	{
@@ -41,18 +42,16 @@ const routes = [
 	{
 		path: '/batches',
 		name: 'Batches',
-		component: () => import('@/pages/Batches.vue'),
+		component: () => import('@/pages/Batches/Batches.vue'),
 	},
 	{
 		path: '/batches/details/:batchName',
-		name: 'BatchDetail',
-		component: () => import('@/pages/BatchDetail.vue'),
-		props: true,
+		redirect: (to) => `/batches/${to.params.batchName}`,
 	},
 	{
 		path: '/batches/:batchName',
-		name: 'Batch',
-		component: () => import('@/pages/Batch.vue'),
+		name: 'BatchDetail',
+		component: () => import('@/pages/Batches/BatchDetail.vue'),
 		props: true,
 	},
 	{
@@ -113,21 +112,15 @@ const routes = [
 		props: true,
 	},
 	{
-		path: '/courses/:courseName/edit',
-		name: 'CourseForm',
-		component: () => import('@/pages/CourseForm.vue'),
+		path: '/job-openings/:job/applications',
+		name: 'JobApplications',
+		component: () => import('@/pages/JobApplications.vue'),
 		props: true,
 	},
 	{
 		path: '/courses/:courseName/learn/:chapterNumber-:lessonNumber/edit',
 		name: 'LessonForm',
 		component: () => import('@/pages/LessonForm.vue'),
-		props: true,
-	},
-	{
-		path: '/batches/:batchName/edit',
-		name: 'BatchForm',
-		component: () => import('@/pages/BatchForm.vue'),
 		props: true,
 	},
 	{
@@ -145,12 +138,6 @@ const routes = [
 		path: '/notifications',
 		name: 'Notifications',
 		component: () => import('@/pages/Notifications.vue'),
-	},
-	{
-		path: '/badges/:badgeName/:email',
-		name: 'Badge',
-		component: () => import('@/pages/Badge.vue'),
-		props: true,
 	},
 	{
 		path: '/quizzes',
@@ -237,17 +224,39 @@ const routes = [
 			),
 		props: true,
 	},
+	{
+		path: '/search',
+		name: 'Search',
+		component: () => import('@/pages/Search/Search.vue'),
+	},
+	{
+		path: '/data-import',
+		name: 'DataImportList',
+		component: () => import('@/pages/DataImport.vue'),
+	},
+	{
+		path: '/data-import/doctype/:doctype',
+		name: 'NewDataImport',
+		component: () => import('@/pages/DataImport.vue'),
+		props: true,
+	},
+	{
+		path: '/data-import/:importName',
+		name: 'DataImport',
+		component: () => import('@/pages/DataImport.vue'),
+		props: true,
+	},
 ]
 
 let router = createRouter({
-	history: createWebHistory('/lms'),
+	history: createWebHistory(`/${getLmsBasePath()}`),
 	routes,
 })
 
 router.beforeEach(async (to, from, next) => {
 	const { userResource } = usersStore()
 	let { isLoggedIn } = sessionStore()
-	const { allowGuestAccess } = useSettings()
+	const { settings } = useSettings()
 
 	try {
 		if (isLoggedIn) {
@@ -260,8 +269,8 @@ router.beforeEach(async (to, from, next) => {
 	if (!isLoggedIn) {
 		if (to.name == 'Home') router.push({ name: 'Courses' })
 
-		await allowGuestAccess.promise
-		if (!allowGuestAccess.data) {
+		await settings.promise
+		if (!settings.data.allow_guest_access) {
 			window.location.href = '/login'
 			return
 		}

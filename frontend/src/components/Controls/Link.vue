@@ -11,7 +11,6 @@
 			:size="attrs.size || 'sm'"
 			:variant="attrs.variant"
 			:placeholder="attrs.placeholder"
-			:filterable="false"
 			:readonly="attrs.readonly"
 		>
 			<template #target="{ open, togglePopover }">
@@ -31,28 +30,48 @@
 			</template>
 
 			<template #footer="{ value, close }">
-				<div v-if="attrs.onCreate">
-					<Button
-						variant="ghost"
-						class="w-full !justify-start"
-						:label="__('Create New')"
-						@click="attrs.onCreate(value, close)"
+				<div v-if="creating" class="flex items-center gap-1">
+					<button
+						class="p-1 rounded hover:bg-surface-gray-3 text-ink-gray-5"
+						@click="creating = false"
+						:aria-label="__('Cancel')"
 					>
-						<template #prefix>
-							<Plus class="h-4 w-4 stroke-1.5" />
-						</template>
+						<ArrowLeft class="size-4 stroke-1.5" />
+					</button>
+					<FormControl
+						v-model="newItemName"
+						class="flex-1 min-w-0"
+						size="sm"
+						:placeholder="__(props.inlineCreatePlaceholder)"
+					/>
+					<Button
+						variant="solid"
+						size="sm"
+						:disabled="!newItemName.trim()"
+						@click="submitCreate"
+						:aria-label="__('Create')"
+					>
+						{{ __('Create') }}
 					</Button>
 				</div>
-				<div>
+				<div v-else class="flex justify-between">
 					<Button
 						variant="ghost"
-						class="w-full !justify-start"
-						:label="__('Clear')"
 						@click="() => clearValue(close)"
+						:aria-label="__('Clear')"
+					>
+						{{ __('Clear') }}
+					</Button>
+					<Button
+						v-if="props.onCreate"
+						variant="ghost"
+						@click="handleCreate(close)"
+						:aria-label="__('Create New')"
 					>
 						<template #prefix>
-							<X class="h-4 w-4 stroke-1.5" />
+							<Plus class="size-4 stroke-1.5" />
 						</template>
+						{{ __('Create New') }}
 					</Button>
 				</div>
 			</template>
@@ -64,9 +83,10 @@
 <script setup>
 import Autocomplete from '@/components/Controls/Autocomplete.vue'
 import { watchDebounced } from '@vueuse/core'
-import { createResource, Button } from 'frappe-ui'
-import { Plus, X } from 'lucide-vue-next'
+import { createResource, Button, FormControl } from 'frappe-ui'
+import { Plus, ArrowLeft } from 'lucide-vue-next'
 import { useAttrs, computed, ref } from 'vue'
+import { useSettings } from '@/stores/settings'
 
 const props = defineProps({
 	doctype: {
@@ -85,24 +105,59 @@ const props = defineProps({
 		type: String,
 		default: '',
 	},
+	inlineCreate: {
+		type: Boolean,
+		default: false,
+	},
+	inlineCreatePlaceholder: {
+		type: String,
+		default: 'Enter...',
+	},
+	onCreate: {
+		type: Function,
+		default: null,
+	},
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
 const attrs = useAttrs()
 const valuePropPassed = computed(() => 'value' in attrs)
+const creating = ref(false)
+const newItemName = ref('')
 
 const value = computed({
 	get: () => (valuePropPassed.value ? attrs.value : props.modelValue),
 	set: (val) => {
 		return (
 			val?.value &&
-			emit(valuePropPassed.value ? 'change' : 'update:modelValue', val?.value)
+			emit(valuePropPassed.value ? 'change' : 'update:modelValue', val.value)
 		)
 	},
 })
 
 const autocomplete = ref(null)
 const text = ref('')
+const settingsStore = useSettings()
+
+function handleCreate(close) {
+	if (props.inlineCreate) {
+		creating.value = true
+		return
+	}
+	if (props.onCreate) {
+		props.onCreate(null, close)
+	}
+}
+
+function submitCreate() {
+	if (!newItemName.value.trim() || !props.onCreate) return
+	const value = newItemName.value.trim()
+	props.onCreate(value, () => {
+		creating.value = false
+		newItemName.value = ''
+		reload()
+	})
+}
 
 watchDebounced(
 	() => autocomplete.value?.query,
@@ -121,6 +176,16 @@ watchDebounced(
 	{ debounce: 300, immediate: true }
 )
 
+watchDebounced(
+	() => settingsStore.isSettingsOpen,
+	(isOpen, wasOpen) => {
+		if (wasOpen && !isOpen) {
+			reload('')
+		}
+	},
+	{ debounce: 200 }
+)
+
 const options = createResource({
 	url: 'frappe.desk.search.search_link',
 	cache: [props.doctype, text.value],
@@ -129,7 +194,7 @@ const options = createResource({
 	params: {
 		txt: text.value,
 		doctype: props.doctype,
-		filters: props.filters,
+		filters: JSON.stringify(props.filters),
 	},
 	transform: (data) => {
 		return data.map((option) => {
@@ -142,12 +207,12 @@ const options = createResource({
 	},
 })
 
-const reload = (val) => {
+const reload = (val = '') => {
 	options.update({
 		params: {
 			txt: val,
 			doctype: props.doctype,
-			filters: props.filters,
+			filters: JSON.stringify(props.filters),
 		},
 	})
 	options.reload()
@@ -167,4 +232,6 @@ const labelClasses = computed(() => {
 		'text-ink-gray-5',
 	]
 })
+
+defineExpose({ reload })
 </script>

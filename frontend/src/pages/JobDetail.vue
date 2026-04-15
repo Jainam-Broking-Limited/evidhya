@@ -18,10 +18,21 @@
 			/>
 			<div
 				v-if="user.data?.name && !readOnlyMode"
-				class="flex items-center space-x-2"
+				class="flex items-center gap-x-2"
 			>
 				<router-link
-					v-if="user.data.name == job.data?.owner"
+					v-if="canManageJob && applicationCount.data > 0"
+					:to="{
+						name: 'JobApplications',
+						params: { job: job.data?.name },
+					}"
+				>
+					<Button variant="subtle">
+						{{ __('View Applications') }}
+					</Button>
+				</router-link>
+				<router-link
+					v-if="canManageJob"
 					:to="{
 						name: 'JobForm',
 						params: { jobName: job.data?.name },
@@ -71,7 +82,7 @@
 					<div class="flex">
 						<img
 							:src="job.data.company_logo"
-							class="size-10 rounded-lg object-contain cursor-pointer mr-4"
+							class="size-10 rounded-lg object-contain cursor-pointer me-4"
 							:alt="job.data.company_name"
 							@click="redirectToWebsite(job.data.company_website)"
 						/>
@@ -86,7 +97,7 @@
 						</div>
 					</div>
 
-					<div class="space-x-5">
+					<div class="flex items-center gap-x-2">
 						<Badge size="lg">
 							<template #prefix>
 								<CalendarDays class="size-3 stroke-2 text-ink-gray-7" />
@@ -98,6 +109,12 @@
 								<ClipboardType class="size-3 stroke-2 text-ink-gray-7" />
 							</template>
 							{{ job.data.type }}
+						</Badge>
+						<Badge v-if="job.data?.work_mode" size="lg">
+							<template #prefix>
+								<BriefcaseBusiness class="size-3 stroke-2 text-ink-gray-7" />
+							</template>
+							{{ job.data.work_mode }}
 						</Badge>
 						<Badge v-if="applicationCount.data" size="lg">
 							<template #prefix>
@@ -140,7 +157,7 @@ import {
 	createResource,
 	usePageMeta,
 } from 'frappe-ui'
-import { inject, ref } from 'vue'
+import { inject, ref, computed, watch, nextTick } from 'vue'
 import { sessionStore } from '../stores/session'
 import JobApplicationModal from '@/components/Modals/JobApplicationModal.vue'
 import {
@@ -152,6 +169,8 @@ import {
 	SquareArrowOutUpRight,
 	FileText,
 	ClipboardType,
+	BriefcaseBusiness,
+	Users,
 } from 'lucide-vue-next'
 
 const user = inject('$user')
@@ -174,17 +193,11 @@ const job = createResource({
 	},
 	cache: ['job', props.job],
 	auto: true,
-	onSuccess: (data) => {
-		if (user.data?.name) {
-			jobApplication.submit()
-		}
-		applicationCount.submit()
-	},
 })
 
 const jobApplication = createResource({
 	url: 'frappe.client.get_list',
-	makeParams(values) {
+	makeParams() {
 		return {
 			doctype: 'LMS Job Application',
 			filters: {
@@ -197,7 +210,7 @@ const jobApplication = createResource({
 
 const applicationCount = createResource({
 	url: 'frappe.client.get_count',
-	makeParams(values) {
+	makeParams() {
 		return {
 			doctype: 'LMS Job Application',
 			filters: {
@@ -206,6 +219,18 @@ const applicationCount = createResource({
 		}
 	},
 })
+
+const stopWatch = watch(
+	() => [job.data?.name, user.data?.name],
+	([jobName, userName]) => {
+		if (jobName && userName) {
+			jobApplication.submit()
+			applicationCount.submit()
+			nextTick(() => stopWatch())
+		}
+	},
+	{ immediate: true }
+)
 
 const openApplicationModal = () => {
 	showApplicationModal.value = true
@@ -218,6 +243,11 @@ const redirectToLogin = (job) => {
 const redirectToWebsite = (url) => {
 	window.open(url, '_blank')
 }
+
+const canManageJob = computed(() => {
+	if (!user.data?.name || !job.data) return false
+	return user.data.name === job.data.owner || user.data?.is_moderator
+})
 
 usePageMeta(() => {
 	return {

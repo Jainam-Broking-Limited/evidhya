@@ -9,14 +9,38 @@ from frappe.model.document import Document
 from frappe.realtime import get_website_room
 from frappe.utils.telemetry import capture
 
-from lms.lms.utils import get_course_progress
+from lms.lms.utils import get_course_progress, is_demo_course, recalculate_course_progress
 
 from ...md import find_macros
 
 
 class CourseLesson(Document):
+	def after_insert(self):
+		self.validate_progress_recalculation()
+
+	def after_delete(self):
+		self.validate_progress_recalculation()
+
 	def on_update(self):
 		self.validate_quiz_id()
+
+	def validate_progress_recalculation(self):
+		if not self.course or not self.chapter:
+			return
+
+		enrollments = frappe.db.get_all(
+			"LMS Enrollment",
+			filters={"course": self.course},
+			fields=["name", "member"],
+		)
+		if not len(enrollments):
+			return
+
+		frappe.enqueue(method=self.recalculate_progress, queue="long", is_async=True, enrollments=enrollments)
+
+	def recalculate_progress(self, enrollments):
+		for enrollment in enrollments:
+			recalculate_course_progress(self.course, enrollment.member)
 
 	def validate_quiz_id(self):
 		if self.quiz_id and not frappe.db.exists("LMS Quiz", self.quiz_id):
@@ -46,20 +70,30 @@ class CourseLesson(Document):
 
 
 @frappe.whitelist()
-def save_progress(lesson, course):
+def save_progress(lesson: str, course: str, scorm_details: dict = None):
+	"""
+	Note: Pass the argument scorm_details as a dict if it is SCORM related save_progress
+	"""
 	membership = frappe.db.exists("LMS Enrollment", {"course": course, "member": frappe.session.user})
 	if not membership:
 		return 0
 
-	frappe.db.set_value("LMS Enrollment", membership, "current_lesson", lesson)
-	already_completed = frappe.db.exists(
+	frappe.db.set_value("LMS Enrollment", membership, "current_lesson", lesson, update_modified=False)
+	progress_already_exists = frappe.db.exists(
 		"LMS Course Progress", {"lesson": lesson, "member": frappe.session.user}
+	)
+	lesson_already_completed = frappe.db.exists(
+		"LMS Course Progress",
+		{"lesson": lesson, "member": frappe.session.user, "status": "Complete"},
 	)
 
 	quiz_completed = get_quiz_progress(lesson)
 	assignment_completed = get_assignment_progress(lesson)
 
-	if not already_completed and quiz_completed and assignment_completed:
+	if scorm_details:
+		scorm_details = frappe._dict(**scorm_details)
+
+	if not progress_already_exists and quiz_completed and assignment_completed and not scorm_details:
 		frappe.get_doc(
 			{
 				"doctype": "LMS Course Progress",
@@ -68,13 +102,38 @@ def save_progress(lesson, course):
 				"member": frappe.session.user,
 			}
 		).save(ignore_permissions=True)
+	elif scorm_details and not lesson_already_completed and not progress_already_exists:
+		# Create new SCORM progress
+		frappe.get_doc(
+			{
+				"doctype": "LMS Course Progress",
+				"lesson": lesson,
+				"status": "Complete" if scorm_details.is_complete else "Partially Complete",
+				"member": frappe.session.user,
+				"scorm_content": "" if scorm_details.is_complete else scorm_details.scorm_content,
+			}
+		).save(ignore_permissions=True)
+	elif scorm_details and not lesson_already_completed and progress_already_exists:
+		# Update Existing SCORM Progress
+		frappe.db.set_value(
+			"LMS Course Progress",
+			progress_already_exists,
+			{
+				"lesson": lesson,
+				"status": "Complete" if scorm_details.is_complete else "Partially Complete",
+				"member": frappe.session.user,
+				"scorm_content": "" if scorm_details.is_complete else scorm_details.scorm_content,
+			},
+		)
 
 	progress = get_course_progress(course)
-	capture_progress_for_analytics(progress, course)
+	if not is_demo_course(course):
+		capture("course_progress", "lms")
 
 	# Had to get doc, as on_change doesn't trigger when you use set_value. The trigger is necessary for badge to get assigned.
 	enrollment = frappe.get_doc("LMS Enrollment", membership)
 	enrollment.progress = progress
+	enrollment.flags.ignore_version = True
 	enrollment.save()
 	enrollment.run_method("on_change")
 
@@ -86,11 +145,6 @@ def save_progress(lesson, course):
 	)
 
 	return progress
-
-
-def capture_progress_for_analytics(progress, course):
-	if progress in [25, 50, 75, 100]:
-		capture("course_progress", "lms", properties={"course": course, "progress": progress})
 
 
 def get_quiz_progress(lesson):
@@ -149,8 +203,3 @@ def get_assignment_progress(lesson):
 		):
 			return False
 	return True
-
-
-@frappe.whitelist()
-def get_lesson_info(chapter):
-	return frappe.db.get_value("Course Chapter", chapter, "course")

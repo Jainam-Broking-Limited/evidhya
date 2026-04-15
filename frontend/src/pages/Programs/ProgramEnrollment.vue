@@ -11,7 +11,7 @@
 			</div>
 		</template>
 		<template #body-content>
-			<div v-if="program.data" class="text-base">
+			<div v-if="program.data" class="text-base text-ink-gray-9">
 				<div class="bg-surface-blue-2 text-ink-blue-3 p-2 rounded-md leading-5">
 					<span>
 						{{
@@ -46,9 +46,9 @@
 					<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
 						<div
 							v-for="course in program.data.courses"
-							class="flex flex-col border p-2 rounded-md h-full"
+							class="flex flex-col border border-outline-gray-2 p-2 rounded-md h-full"
 						>
-							<div class="font-semibold leading-5 mb-2">
+							<div class="font-semibold text-ink-gray-9 leading-5 mb-2">
 								{{ course.title }}
 							</div>
 
@@ -57,24 +57,24 @@
                             </div> -->
 
 							<div
-								class="flex items-center space-x-5 text-sm text-ink-gray-5 mb-8"
+								class="flex items-center gap-x-5 text-sm text-ink-gray-5 mb-8"
 							>
 								<Tooltip :text="__('Lessons')">
-									<span class="flex items-center space-x-1">
+									<span class="flex items-center gap-x-1">
 										<BookOpen class="size-3 stroke-1.5" />
 										<span> {{ course.lessons }} {{ __('lessons') }} </span>
 									</span>
 								</Tooltip>
 
 								<Tooltip :text="__('Enrolled Students')">
-									<span class="flex items-center space-x-1">
+									<span class="flex items-center gap-x-1">
 										<User class="size-3 stroke-1.5" />
 										<span> {{ course.enrollments }} {{ __('students') }} </span>
 									</span>
 								</Tooltip>
 
 								<!-- <Tooltip v-if="course.rating" :text="__('Average Rating')">
-                                    <span class="flex items-center space-x-1">
+                                    <span class="flex items-center gap-x-1">
                                         <Star class="size-3 stroke-1.5" />
                                         <span>
                                             {{ course.rating }} {{ __("rating") }}
@@ -83,9 +83,9 @@
                                 </Tooltip> -->
 							</div>
 
-							<div class="flex items-center space-x-1 mt-auto">
+							<div class="flex items-center gap-x-1 mt-auto">
 								<UserAvatar :user="course.instructors[0]" />
-								<span>
+								<span class="text-ink-gray-9">
 									{{ course.instructors[0].full_name }}
 								</span>
 							</div>
@@ -95,7 +95,7 @@
 			</div>
 		</template>
 		<template #actions="{ close }">
-			<div class="flex justify-end space-x-2 group">
+			<div class="flex justify-end gap-x-2 group">
 				<Button variant="solid" @click="enrollInProgram(close)">
 					{{ __('Confirm Enrollment') }}
 				</Button>

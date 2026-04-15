@@ -20,8 +20,8 @@
 		</Button>
 	</div>
 	<div class="grid grid-cols-2 h-[calc(100vh_-_3rem)]">
-		<div class="border-r py-5 px-8 h-full">
-			<div class="font-semibold mb-2">
+		<div class="border-e py-5 px-8 h-full">
+			<div class="font-semibold mb-2 text-ink-gray-9">
 				{{ __('Problem Statement') }}
 			</div>
 			<div
@@ -31,10 +31,10 @@
 		</div>
 		<div>
 			<div class="flex items-center justify-between p-2 bg-surface-gray-2">
-				<div class="font-semibold">
+				<div class="font-semibold text-ink-gray-9">
 					{{ exercise.doc?.language }}
 				</div>
-				<div class="space-x-2">
+				<div class="flex items-center gap-x-2">
 					<Badge
 						v-if="submission.doc?.status"
 						:theme="submission.doc.status == 'Passed' ? 'green' : 'red'"
@@ -49,11 +49,14 @@
 						"
 						variant="solid"
 						@click="submitCode"
+						:loading="running"
+						:disabled="running"
+						class="text-ink-gray-9"
 					>
 						<template #prefix>
 							<Play class="size-3" />
 						</template>
-						{{ __('Run') }}
+						{{ running ? __('Running') : __('Run') }}
 					</Button>
 				</div>
 			</div>
@@ -89,9 +92,11 @@
 						class="py-3"
 					>
 						<div class="flex items-center mb-3">
-							<span class=""> {{ __('Test {0}').format(index + 1) }} - </span>
+							<span class="text-ink-gray-9">
+								{{ __('Test {0}').format(index + 1) }} -
+							</span>
 							<span
-								class="font-semibold ml-2 mr-1"
+								class="font-semibold ms-2 me-1"
 								:class="
 									testCase.status === 'Passed'
 										? 'text-ink-green-3'
@@ -112,13 +117,13 @@
 								<div class="text-xs text-ink-gray-7">
 									{{ __('Input') }}
 								</div>
-								<div>{{ testCase.input }}</div>
+								<div class="text-ink-gray-9">{{ testCase.input }}</div>
 							</div>
 							<div class="space-y-2">
 								<div class="text-xs text-ink-gray-7">
 									{{ __('Your Output') }}
 								</div>
-								<div>
+								<div class="text-ink-gray-9">
 									{{ testCase.output }}
 								</div>
 							</div>
@@ -126,7 +131,9 @@
 								<div class="text-xs text-ink-gray-7">
 									{{ __('Expected Output') }}
 								</div>
-								<div>{{ testCase.expected_output }}</div>
+								<div class="text-ink-gray-9">
+									{{ testCase.expected_output }}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -153,6 +160,8 @@ import { Play, X, Check, Settings } from 'lucide-vue-next'
 import { sessionStore } from '@/stores/session'
 import { useRouter } from 'vue-router'
 import { openSettings } from '@/utils'
+import { useSettings } from '@/stores/settings'
+import { getLmsRoute } from '@/utils/basePath'
 
 const user = inject<any>('$user')
 const code = ref<string | null>('')
@@ -162,11 +171,13 @@ const errorMessage = ref<string | null>(null)
 const testCaseSection = ref<HTMLElement | null>(null)
 const testCases = ref<TestCase[]>([])
 const boilerplate = ref<string>('')
-const { brand, livecodeURL } = sessionStore()
+const { brand } = sessionStore()
+const { settings } = useSettings()
 const router = useRouter()
 const fromLesson = ref(false)
-const falconURL = ref<string>('https://falcon.frappe.io/')
+const falconURL = ref<string>('https://falcon.frappe.io')
 const falconError = ref<string | null>(null)
+const running = ref<boolean>(false)
 
 const props = withDefaults(
 	defineProps<{
@@ -249,7 +260,10 @@ const updateBoilerPlate = () => {
 
 const checkIfUserIsPermitted = (doc: any = null) => {
 	if (!user.data) {
-		window.location.href = `/login?redirect-to=/lms/programming-exercises/${props.exerciseID}/submission/${props.submissionID}`
+		const redirectPath = getLmsRoute(
+			`programming-exercises/${props.exerciseID}/submission/${props.submissionID}`
+		)
+		window.location.href = `/login?redirect-to=${redirectPath}`
 	}
 
 	if (!doc) return
@@ -260,8 +274,7 @@ const checkIfUserIsPermitted = (doc: any = null) => {
 		!user.data.is_evaluator
 	) {
 		router.push({
-			name: 'ProgrammingExerciseSubmission',
-			params: { exerciseID: props.exerciseID, submissionID: 'new' },
+			name: 'Courses',
 		})
 		return
 	}
@@ -286,12 +299,12 @@ watch(
 )
 
 const loadFalcon = () => {
-	if (livecodeURL.data) {
-		falconURL.value = livecodeURL.data
+	if (settings.data) {
+		falconURL.value = settings.data.livecode_url
 	}
 	return new Promise((resolve, reject) => {
 		const script = document.createElement('script')
-		script.src = `${falconURL.value}static/livecode.js`
+		script.src = `${falconURL.value}/static/livecode.js`
 		script.onload = resolve
 		script.onerror = reject
 		document.head.appendChild(script)
@@ -299,8 +312,10 @@ const loadFalcon = () => {
 }
 
 const submitCode = async () => {
+	running.value = true
 	await runCode()
 	createSubmission()
+	running.value = false
 }
 
 const runCode = async () => {
@@ -397,6 +412,7 @@ const execute = (stdin = ''): Promise<string> => {
 
 		setTimeout(() => {
 			if (!hasExited) {
+				running.value = false
 				error.value = true
 				errorMessage.value = 'Execution timed out.'
 				reject('Execution timed out.')

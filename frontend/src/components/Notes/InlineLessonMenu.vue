@@ -4,7 +4,7 @@
 		:style="{
 			display: top > 0 ? 'block' : 'none',
 			top: top + 'px',
-			left: left + 'px',
+			insetInlineStart: left + 'px',
 		}"
 	>
 		<div class="space-y-2 py-2">
@@ -14,13 +14,13 @@
 			<div class="">
 				<div
 					v-for="color in colors"
-					class="flex items-center space-x-2 px-3 py-2 cursor-pointer hover:bg-surface-gray-2"
+					class="flex items-center gap-x-2 px-3 py-2 cursor-pointer hover:bg-surface-gray-2"
 					@click="saveHighLight(color)"
 				>
 					<span
 						class="size-3 rounded-full"
 						:style="{
-							backgroundColor: theme.backgroundColor[color.toLowerCase()][400],
+							backgroundColor: getColor(color.toLowerCase(), 400),
 						}"
 					></span>
 					<span>
@@ -32,7 +32,7 @@
 		<div class="border-t">
 			<div
 				@click="addToNotes()"
-				class="flex items-center space-x-2 hover:bg-surface-gray-2 cursor-pointer rounded-b-md py-2 px-3"
+				class="flex items-center gap-x-2 hover:bg-surface-gray-2 cursor-pointer rounded-b-md py-2 px-3"
 			>
 				<NotepadText class="size-3 stroke-1.5" />
 				<span>
@@ -42,7 +42,7 @@
 			<div
 				v-if="highlightExists()"
 				@click="deleteHighlight"
-				class="flex items-center space-x-2 hover:bg-surface-gray-2 cursor-pointer rounded-b-md py-2 px-3"
+				class="flex items-center gap-x-2 hover:bg-surface-gray-2 cursor-pointer rounded-b-md py-2 px-3"
 			>
 				<Trash2 class="size-3 stroke-1.5" />
 				<span>
@@ -55,9 +55,8 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import { NotepadText, Trash2 } from 'lucide-vue-next'
-import { theme } from '@/utils/theme'
 import type { Note, Notes } from '@/components/Notes/types'
-import { blockQuotesClick, highlightText } from '@/utils'
+import { blockQuotesClick, getColor, highlightText } from '@/utils'
 
 const user = inject<any>('$user')
 const show = defineModel()

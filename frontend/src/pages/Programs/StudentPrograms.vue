@@ -17,19 +17,19 @@
 						@click="openDetails(program.name, category)"
 						class="border rounded-md p-3 hover:border-outline-gray-3 cursor-pointer"
 					>
-						<div class="text-lg font-semibold mb-2">
+						<div class="text-lg font-semibold text-ink-gray-9 mb-2">
 							{{ program.name }}
 						</div>
 
-						<div class="flex items-center space-x-5 text-sm text-ink-gray-7">
-							<div class="flex items-center space-x-1">
+						<div class="flex items-center gap-x-5 text-sm text-ink-gray-7">
+							<div class="flex items-center gap-x-1">
 								<BookOpen class="size-3 stroke-1.5" />
 								<span>
 									{{ program.course_count }}
 									{{ program.course_count == 1 ? __('course') : __('courses') }}
 								</span>
 							</div>
-							<div class="flex items-center space-x-1">
+							<div class="flex items-center gap-x-1">
 								<User class="size-4 stroke-1.5" />
 								<span>
 									{{ program.member_count || 0 }}
@@ -40,7 +40,7 @@
 
 						<div v-if="Object.keys(program).includes('progress')" class="mt-5">
 							<ProgressBar :progress="program.progress" />
-							<div class="text-sm mt-1">
+							<div class="text-sm text-ink-gray-7 mt-1">
 								{{ Math.ceil(program.progress) }}% {{ __('completed') }}
 							</div>
 						</div>

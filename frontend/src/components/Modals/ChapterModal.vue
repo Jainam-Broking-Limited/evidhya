@@ -16,7 +16,12 @@
 	>
 		<template #body-content>
 			<div class="space-y-4 text-base">
-				<FormControl label="Title" v-model="chapter.title" :required="true" />
+				<FormControl
+					label="Title"
+					v-model="chapter.title"
+					:required="true"
+					autocomplete="off"
+				/>
 				<Switch
 					size="sm"
 					:label="__('SCORM Package')"
@@ -46,11 +51,11 @@
 					</FileUploader>
 					<div v-else class="">
 						<div class="flex items-center">
-							<div class="border rounded-md p-2 mr-2">
+							<div class="border rounded-md p-2 me-2">
 								<FileText class="h-5 w-5 stroke-1.5 text-ink-gray-7" />
 							</div>
 							<div class="flex flex-col">
-								<span>
+								<span class="text-ink-gray-9">
 									{{ chapter.scorm_package.file_name }}
 								</span>
 								<span class="text-sm text-ink-gray-4 mt-1">
@@ -59,7 +64,7 @@
 							</div>
 							<X
 								@click="() => (chapter.scorm_package = null)"
-								class="bg-surface-gray-3 rounded-md cursor-pointer stroke-1.5 w-5 h-5 p-1 ml-4"
+								class="bg-surface-gray-3 rounded-md cursor-pointer stroke-1.5 w-5 h-5 p-1 ms-4"
 							/>
 						</div>
 					</div>
@@ -80,13 +85,13 @@ import {
 } from 'frappe-ui'
 import { reactive, watch, inject } from 'vue'
 import { getFileSize } from '@/utils/'
-import { capture } from '@/telemetry'
 import { FileText, X } from 'lucide-vue-next'
-import { useOnboarding } from 'frappe-ui/frappe'
+import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 
 const show = defineModel()
 const outline = defineModel('outline')
 const user = inject('$user')
+const { capture } = useTelemetry()
 const { updateOnboardingStep } = useOnboarding('learning')
 
 const props = defineProps({

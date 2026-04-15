@@ -10,14 +10,10 @@
 			{{ __('Create') }}
 		</Button>
 	</header>
-	<div class="py-5 mx-5">
-		<div class="flex items-center justify-between mb-4">
-			<div class="text-lg font-semibold text-ink-gray-7">
-				{{
-					quizzes.data?.length
-						? __('{0} Quizzes').format(quizzes.data.length)
-						: __('No Quizzes')
-				}}
+	<div class="pt-5">
+		<div class="flex items-center justify-between mb-5 mx-5">
+			<div class="text-lg font-semibold text-ink-gray-9">
+				{{ __('{0} Quizzes').format(quizzes.data?.length) }}
 			</div>
 			<FormControl v-model="search" type="text" placeholder="Search">
 				<template #prefix>
@@ -31,9 +27,10 @@
 			:rows="quizzes.data"
 			row-key="name"
 			:options="{ showTooltip: false, selectable: true }"
+			class="h-[74.5vh] lg:h-[79vh] px-5"
 		>
 			<ListHeader
-				class="mb-2 grid items-center space-x-4 rounded bg-surface-gray-2 p-2"
+				class="mb-2 grid items-center rounded bg-surface-white border-b rounded-none p-2"
 			>
 				<ListHeaderItem :item="item" v-for="item in quizColumns">
 					<template #prefix="{ item }">
@@ -51,7 +48,7 @@
 						},
 					}"
 				>
-					<ListRow :row="row">
+					<ListRow :row="row" class="hover:bg-surface-gray-2">
 						<template #default="{ column, item }">
 							<ListRowItem :item="row[column.key]" :align="column.align">
 								<div v-if="column.key == 'show_answers'">
@@ -63,7 +60,7 @@
 								</div>
 								<div
 									v-else-if="column.key == 'modified'"
-									class="text-xs text-ink-gray-5"
+									class="text-sm text-ink-gray-5"
 								>
 									{{ row[column.key] }}
 								</div>
@@ -75,7 +72,7 @@
 					</ListRow>
 				</router-link>
 			</ListRows>
-			<ListSelectBanner>
+			<ListSelectBanner class="bottom-50">
 				<template #actions="{ unselectAll, selections }">
 					<div class="flex gap-2">
 						<Button
@@ -88,11 +85,17 @@
 				</template>
 			</ListSelectBanner>
 		</ListView>
-		<EmptyState v-else type="Quizzes" />
-		<div v-if="quizzes.hasNextPage" class="flex justify-center my-5">
-			<Button @click="quizzes.next()">
+		<div v-else class="h-[49vh] lg:h-[53vh] px-5">
+			<EmptyState type="Quizzes" />
+		</div>
+		<div class="flex items-center justify-end gap-x-3 pt-3 border-t px-5">
+			<Button v-if="quizzes.hasNextPage" @click="quizzes.next()">
 				{{ __('Load More') }}
 			</Button>
+			<div v-if="quizzes.hasNextPage" class="h-8 border-s"></div>
+			<div class="text-ink-gray-5">
+				{{ quizzes.data?.length }} {{ __('of') }} {{ totalQuizzes.data }}
+			</div>
 		</div>
 	</div>
 	<Dialog
@@ -112,7 +115,13 @@
 		}"
 	>
 		<template #body-content>
-			<FormControl v-model="title" :label="__('Title')" type="text" />
+			<FormControl
+				v-model="title"
+				:label="__('Title')"
+				type="text"
+				autocomplete="off"
+				@keydown.enter="insertQuiz(() => (showForm = false))"
+			/>
 		</template>
 	</Dialog>
 </template>
@@ -121,6 +130,7 @@ import {
 	Breadcrumbs,
 	Button,
 	createListResource,
+	createResource,
 	Dialog,
 	FeatherIcon,
 	FormControl,
@@ -134,16 +144,20 @@ import {
 	toast,
 	usePageMeta,
 } from 'frappe-ui'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import { sessionStore } from '@/stores/session'
+import { sanitizeHTML } from '@/utils'
+import { useTelemetry } from 'frappe-ui/frappe'
 import EmptyState from '@/components/EmptyState.vue'
 
 const { brand } = sessionStore()
+const { capture } = useTelemetry()
 const user = inject('$user')
 const dayjs = inject('$dayjs')
 const router = useRouter()
+const route = useRoute()
 const search = ref('')
 const readOnlyMode = window.read_only_mode
 const quizFilters = ref({})
@@ -151,10 +165,15 @@ const showForm = ref(false)
 const title = ref('')
 
 onMounted(() => {
-	if (!user.data?.is_moderator && !user.data?.is_instructor) {
+	if (
+		!user.data?.is_moderator &&
+		!user.data?.is_instructor &&
+		!user.data?.is_evaluator
+	) {
 		router.push({ name: 'Courses' })
-	} else if (!user.data?.is_moderator) {
-		quizFilters.value['owner'] = user.data?.name
+	}
+	if (route.query.new === 'true') {
+		showForm.value = true
 	}
 })
 
@@ -164,6 +183,10 @@ watch(search, () => {
 		filters: quizFilters.value,
 	})
 	quizzes.reload()
+	totalQuizzes.update({
+		filters: quizFilters.value,
+	})
+	totalQuizzes.reload()
 })
 
 const quizzes = createListResource({
@@ -185,13 +208,32 @@ const quizzes = createListResource({
 		return data.map((quiz) => {
 			return {
 				...quiz,
-				modified: dayjs(quiz.modified).fromNow(),
+				modified: dayjs(quiz.modified).format('DD MMM YYYY'),
 			}
 		})
 	},
 })
 
+const totalQuizzes = createResource({
+	url: 'frappe.client.get_count',
+	params: {
+		doctype: 'LMS Quiz',
+		filters: quizFilters.value,
+	},
+	auto: true,
+	cache: ['quizzes_count', user.data?.name],
+	onError(err) {
+		toast.error(err.messages?.[0] || err)
+		console.error(err)
+	},
+})
+
+const validateTitle = () => {
+	title.value = sanitizeHTML(title.value.trim())
+}
+
 const insertQuiz = (close) => {
+	validateTitle()
 	quizzes.insert.submit(
 		{
 			title: title.value,
@@ -201,6 +243,7 @@ const insertQuiz = (close) => {
 				toast.success(__('Quiz created successfully'))
 				close()
 				title.value = ''
+				capture('quiz_created')
 				router.push({
 					name: 'QuizForm',
 					params: {
@@ -234,7 +277,7 @@ const quizColumns = computed(() => {
 		{
 			label: __('Total Marks'),
 			key: 'total_marks',
-			width: 1,
+			width: 0.5,
 			align: 'center',
 			icon: 'hash',
 		},
@@ -248,22 +291,22 @@ const quizColumns = computed(() => {
 		{
 			label: __('Max Attempts'),
 			key: 'max_attempts',
-			width: 1,
+			width: 0.5,
 			align: 'center',
 			icon: 'repeat',
 		},
 		{
 			label: __('Show Answers'),
 			key: 'show_answers',
-			width: 1,
+			width: 0.5,
 			align: 'center',
 			icon: 'eye',
 		},
 		{
-			label: __('Modified'),
+			label: __('Updated On'),
 			key: 'modified',
 			width: 1,
-			align: 'center',
+			align: 'right',
 			icon: 'clock',
 		},
 	]

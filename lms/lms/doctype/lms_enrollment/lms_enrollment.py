@@ -8,56 +8,83 @@ from frappe.utils import ceil
 
 
 class LMSEnrollment(Document):
-	def validate(self):
-		self.validate_membership_in_same_batch()
-		self.validate_membership_in_different_batch_same_course()
+	def before_insert(self):
+		self.validate_duplicate_enrollment()
+		self.validate_course_enrollment_eligibility()
+		self.validate_owner()
+
+	def validate_owner(self):
+		"""Makes the member as the owner of the document so that users can update their progress"""
+		if self.owner != self.member:
+			self.owner = self.member
 
 	def on_update(self):
 		update_program_progress(self.member)
 
-	def validate_membership_in_same_batch(self):
-		filters = {"member": self.member, "course": self.course, "name": ["!=", self.name]}
-		if self.batch_old:
-			filters["batch_old"] = self.batch_old
-		previous_membership = frappe.db.get_value(
-			"LMS Enrollment", filters, fieldname=["member_type", "member"], as_dict=1
-		)
-
-		if previous_membership:
-			member_name = frappe.db.get_value("User", self.member, "full_name")
-			course_title = frappe.db.get_value("LMS Course", self.course, "title")
-			frappe.throw(
-				_("{0} is already a {1} of the course {2}").format(
-					member_name, previous_membership.member_type, course_title
-				)
-			)
-
-	def validate_membership_in_different_batch_same_course(self):
-		"""Ensures that a studnet is only part of one batch."""
-		# nothing to worry if the member is not a student
-		if self.member_type != "Student":
-			return
-
-		course = frappe.db.get_value("LMS Batch Old", self.batch_old, "course")
-		memberships = frappe.get_all(
+	def validate_duplicate_enrollment(self):
+		existing_enrollment = frappe.db.exists(
 			"LMS Enrollment",
-			filters={
+			{
+				"course": self.course,
 				"member": self.member,
 				"name": ["!=", self.name],
-				"member_type": "Student",
-				"course": self.course,
 			},
-			fields=["batch_old", "member_type", "name"],
 		)
 
-		if memberships:
-			membership = memberships[0]
-			member_name = frappe.db.get_value("User", self.member, "full_name")
+		if existing_enrollment and existing_enrollment != self.name:
+			frappe.throw(_("Student is already enrolled in this course."))
+
+	def validate_course_enrollment_eligibility(self):
+		course_details = frappe.db.get_value(
+			"LMS Course",
+			self.course,
+			["published", "disable_self_learning", "paid_course", "paid_certificate"],
+			as_dict=True,
+		)
+
+		if course_details.disable_self_learning and not is_admin():
 			frappe.throw(
-				_("{0} is already a Student of {1} course through {2} batch").format(
-					member_name, course, membership.batch_old
+				_(
+					"You cannot enroll in this course as self-learning is disabled. Please contact the Administrator."
 				)
 			)
+
+		if self.enrollment_from_batch:
+			if not frappe.db.exists(
+				"Batch Course", {"parent": self.enrollment_from_batch, "course": self.course}
+			):
+				frappe.throw(_("This batch is not associated with this course."))
+
+			if frappe.db.exists(
+				"LMS Batch Enrollment", {"batch": self.enrollment_from_batch, "member": self.member}
+			):
+				return
+
+		if not course_details.published and not is_admin():
+			frappe.throw(_("You cannot enroll in an unpublished course."))
+
+		if course_details.paid_course and not is_admin():
+			payment = frappe.db.exists(
+				"LMS Payment",
+				{
+					"payment_for_document_type": "LMS Course",
+					"payment_for_document": self.course,
+					"member": self.member,
+					"payment_received": True,
+				},
+			)
+
+			if not payment:
+				frappe.throw(_("You need to complete the payment for this course before enrolling."))
+
+
+def is_admin():
+	roles = frappe.get_roles(frappe.session.user)
+	admin_roles = ["Moderator", "Course Creator", "Batch Evaluator"]
+	for role in admin_roles:
+		if role in roles:
+			return True
+	return False
 
 
 def update_program_progress(member):
@@ -73,34 +100,3 @@ def update_program_progress(member):
 
 		average_progress = ceil(total_progress / len(courses))
 		frappe.db.set_value("LMS Program Member", program.name, "progress", average_progress)
-
-
-@frappe.whitelist()
-def create_membership(course, batch=None, member=None, member_type="Student", role="Member"):
-	if frappe.db.get_value("LMS Course", course, "disable_self_learning"):
-		return False
-
-	enrollment = frappe.new_doc("LMS Enrollment")
-	enrollment.update(
-		{
-			"doctype": "LMS Enrollment",
-			"batch_old": batch,
-			"course": course,
-			"role": role,
-			"member_type": member_type,
-			"member": member or frappe.session.user,
-		}
-	)
-	enrollment.insert()
-	return enrollment
-
-
-@frappe.whitelist()
-def update_current_membership(batch, course, member):
-	all_memberships = frappe.get_all("LMS Enrollment", {"member": member, "course": course})
-	for membership in all_memberships:
-		frappe.db.set_value("LMS Enrollment", membership.name, "is_current", 0)
-
-	current_membership = frappe.get_all("LMS Enrollment", {"batch_old": batch, "member": member})
-	if len(current_membership):
-		frappe.db.set_value("LMS Enrollment", current_membership[0].name, "is_current", 1)

@@ -1,5 +1,4 @@
 import frappe
-from frappe.desk.page.setup_wizard.setup_wizard import add_all_roles_to
 
 from lms.lms.api import give_discussions_permission
 
@@ -7,6 +6,8 @@ from lms.lms.api import give_discussions_permission
 def after_install():
 	create_batch_source()
 	give_discussions_permission()
+	give_user_list_permission()
+	give_event_permission()
 
 
 def after_sync():
@@ -25,13 +26,6 @@ def create_lms_roles():
 	create_moderator_role()
 	create_evaluator_role()
 	create_lms_student_role()
-
-
-def delete_lms_roles():
-	roles = ["Course Creator", "Moderator"]
-	for role in roles:
-		if frappe.db.exists("Role", role):
-			frappe.db.delete("Role", role)
 
 
 def create_course_creator_role():
@@ -136,7 +130,7 @@ def delete_custom_fields():
 		"medium",
 		"linkedin",
 		"profession",
-		"looking_for_job",
+		"open_to",
 		"cover_image" "work_environment",
 		"dream_companies",
 		"career_preference_column",
@@ -185,3 +179,51 @@ def give_lms_roles_to_admin():
 			doc.parentfield = "roles"
 			doc.role = role
 			doc.save()
+
+
+def give_user_list_permission():
+	doctype = "User"
+	roles = ["Course Creator", "Moderator", "Batch Evaluator"]
+	for role in roles:
+		permlevel = 0
+		create_role(doctype, role, permlevel)
+	create_role(doctype, "System Manager", 1)
+
+
+def give_event_permission():
+	doctype = "Event"
+	roles = ["Moderator", "Batch Evaluator"]
+	for role in roles:
+		permlevel = 0
+		create_role(doctype, role, permlevel, 1, 1)
+	create_role(doctype, "System Manager", 0, 1, 1)
+
+
+def create_role(doctype, role, permlevel, write=0, create=0):
+	if not frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": role, "permlevel": permlevel}):
+		if not write and not create:
+			if role in ["Moderator", "System Manager"]:
+				write = 1
+			if role == "Moderator":
+				create = 1
+		doc = frappe.new_doc("Custom DocPerm")
+		doc.update(
+			{
+				"doctype": "Custom DocPerm",
+				"parent": doctype,
+				"role": role,
+				"read": 1,
+				"select": 1,
+				"write": write,
+				"create": create,
+				"permlevel": permlevel,
+			}
+		)
+		doc.save()
+
+
+def delete_lms_roles():
+	roles = ["Course Creator", "Moderator", "Batch Evaluator", "LMS Student"]
+	for role in roles:
+		if frappe.db.exists("Role", role):
+			frappe.db.delete("Role", role)

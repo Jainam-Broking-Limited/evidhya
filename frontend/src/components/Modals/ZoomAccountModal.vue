@@ -18,10 +18,13 @@
 	>
 		<template #body-content>
 			<div class="mb-4">
-				<FormControl
+				<Switch
+					size="sm"
 					v-model="account.enabled"
 					:label="__('Enabled')"
-					type="checkbox"
+					:description="
+						__('Activate this Zoom account for scheduling meetings.')
+					"
 				/>
 			</div>
 			<div class="grid grid-cols-2 gap-5">
@@ -61,11 +64,12 @@
 	</Dialog>
 </template>
 <script setup lang="ts">
-import { call, Dialog, FormControl, toast } from 'frappe-ui'
+import { call, Dialog, FormControl, Switch, toast } from 'frappe-ui'
 import { inject, reactive, watch } from 'vue'
 import { User } from '@/components/Settings/types'
 import { openSettings, cleanError } from '@/utils'
 import Link from '@/components/Controls/Link.vue'
+import { useTelemetry } from 'frappe-ui/frappe'
 
 interface ZoomAccount {
 	name: string
@@ -97,6 +101,7 @@ interface ZoomAccounts {
 const show = defineModel('show')
 const user = inject<User | null>('$user')
 const zoomAccounts = defineModel<ZoomAccounts>('zoomAccounts')
+const { capture } = useTelemetry()
 
 const account = reactive({
 	name: '',
@@ -107,41 +112,34 @@ const account = reactive({
 	client_secret: '',
 })
 
-const props = defineProps({
-	accountID: {
-		type: String,
-		default: 'new',
-	},
-})
+const props = defineProps<{
+	accountID: string | null
+}>()
 
 watch(
 	() => props.accountID,
 	(val) => {
-		if (val != 'new') {
-			zoomAccounts.value?.data.forEach((acc) => {
-				if (acc.name === val) {
-					account.name = acc.name
-					account.enabled = acc.enabled || false
-					account.member = acc.member
-					account.account_id = acc.account_id
-					account.client_id = acc.client_id
-					account.client_secret = acc.client_secret
-				}
-			})
+		console.log(props.accountID)
+		if (val === 'new') {
+			account.name = ''
+			account.enabled = false
+			account.member = user?.data?.name || ''
+			account.account_id = ''
+			account.client_id = ''
+			account.client_secret = ''
+		} else if (val && val !== 'new') {
+			const acc = zoomAccounts.value?.data.find((acc) => acc.name === val)
+			if (acc) {
+				account.name = acc.name
+				account.enabled = acc.enabled || false
+				account.member = acc.member
+				account.account_id = acc.account_id
+				account.client_id = acc.client_id
+				account.client_secret = acc.client_secret
+			}
 		}
 	}
 )
-
-watch(show, (val) => {
-	if (!val) {
-		account.name = ''
-		account.enabled = false
-		account.member = user?.data?.name || ''
-		account.account_id = ''
-		account.client_id = ''
-		account.client_secret = ''
-	}
-})
 
 const saveAccount = (close: () => void) => {
 	if (props.accountID == 'new') {
@@ -159,6 +157,7 @@ const createAccount = (close: () => void) => {
 		},
 		{
 			onSuccess() {
+				capture('zoom_account_linked')
 				zoomAccounts.value?.reload()
 				close()
 				toast.success(__('Zoom Account created successfully'))

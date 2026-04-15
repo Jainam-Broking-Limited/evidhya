@@ -4,7 +4,10 @@ import AssessmentPlugin from '@/components/AssessmentPlugin.vue'
 import translationPlugin from '../translation'
 import { usersStore } from '@/stores/user'
 import { call } from 'frappe-ui'
+import { useRouter } from 'vue-router'
+import { getLmsRoute } from '@/utils/basePath'
 
+const router = useRouter()
 export class Assignment {
 	constructor({ data, api, readOnly }) {
 		this.data = data
@@ -52,7 +55,10 @@ export class Assignment {
 				fieldname: ['name'],
 			}).then((data) => {
 				let submission = data.name || 'new'
-				this.wrapper.innerHTML = `<iframe src="/lms/assignment-submission/${assignment}/${submission}?fromLesson=1" class="w-full h-[500px]"></iframe>`
+				const submissionPath = getLmsRoute(
+					`assignment-submission/${assignment}/${submission}?fromLesson=1`
+				)
+				this.wrapper.innerHTML = `<iframe src="${submissionPath}" class="w-full h-[500px]"></iframe>`
 			})
 			return
 		}
@@ -84,6 +90,7 @@ export class Assignment {
 			},
 		})
 		app.use(translationPlugin)
+		app.use(router)
 		app.mount(this.wrapper)
 	}
 

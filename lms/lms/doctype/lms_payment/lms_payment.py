@@ -5,7 +5,9 @@ import frappe
 from frappe import _
 from frappe.email.doctype.email_template.email_template import get_email_template
 from frappe.model.document import Document
-from frappe.utils import add_days, nowdate
+from frappe.utils import add_days, flt, nowdate
+
+from lms.lms.utils import get_lms_route
 
 
 class LMSPayment(Document):
@@ -22,7 +24,11 @@ def send_payment_reminder():
 
 	incomplete_payments = frappe.get_all(
 		"LMS Payment",
-		{"payment_received": 0, "creation": [">", add_days(nowdate(), -1)]},
+		{
+			"payment_received": 0,
+			"creation": [">", add_days(nowdate(), -1)],
+			"payment_for_document_type": ["in", allowed_payment_types()],
+		},
 		[
 			"name",
 			"member",
@@ -40,6 +46,20 @@ def send_payment_reminder():
 			continue
 
 		send_mail(payment)
+
+
+def allowed_payment_types():
+	send_batch_reminders = frappe.db.get_single_value("LMS Settings", "send_payment_reminders_for_batch")
+	send_course_reminders = frappe.db.get_single_value("LMS Settings", "send_payment_reminders_for_course")
+
+	allowed_types = []
+	if send_batch_reminders:
+		allowed_types.append("LMS Batch")
+
+	if send_course_reminders:
+		allowed_types.append("LMS Course")
+
+	return allowed_types
 
 
 def has_paid_later(payment):
@@ -76,7 +96,9 @@ def send_mail(payment):
 		"title": frappe.db.get_value(
 			payment.payment_for_document_type, payment.payment_for_document, "title"
 		),
-		"link": f"/lms/billing/{ payment.payment_for_document_type.split(' ')[-1].lower() }/{ payment.payment_for_document }",
+		"link": get_lms_route(
+			f"billing/{payment.payment_for_document_type.split(' ')[-1].lower()}/{payment.payment_for_document}"
+		),
 	}
 
 	if custom_template:

@@ -6,7 +6,7 @@
 
 		<div
 			v-if="readOnlyMode"
-			class="flex items-center space-x-2 text-sm text-ink-gray-7 bg-surface-gray-1 px-3 py-2 rounded-md w-full text-center"
+			class="flex items-center gap-x-2 text-sm text-ink-gray-7 bg-surface-gray-1 px-3 py-2 rounded-md w-full text-center"
 		>
 			<CircleAlert class="size-4 stroke-1.5" />
 			<span>
@@ -43,18 +43,22 @@
 						:options="days"
 						v-model="slot.day"
 						@focusout.stop="update(slot.name, 'day', slot.day)"
+						:disabled="!isSessionUser()"
 					/>
 					<FormControl
 						type="time"
 						v-model="slot.start_time"
 						@focusout.stop="update(slot.name, 'start_time', slot.start_time)"
+						:disabled="!isSessionUser()"
 					/>
 					<FormControl
 						type="time"
 						v-model="slot.end_time"
 						@focusout.stop="update(slot.name, 'end_time', slot.end_time)"
+						:disabled="!isSessionUser()"
 					/>
 					<X
+						v-if="isSessionUser()"
 						@click="deleteRow(slot.name)"
 						class="w-6 h-auto stroke-1.5 text-red-900 rounded-md cursor-pointer p-1 bg-surface-red-2 hidden group-hover:block"
 					/>
@@ -69,20 +73,23 @@
 						:options="days"
 						v-model="newSlot.day"
 						@focusout.stop="add()"
+						:disabled="!isSessionUser()"
 					/>
 					<FormControl
 						type="time"
 						v-model="newSlot.start_time"
 						@focusout.stop="add()"
+						:disabled="!isSessionUser()"
 					/>
 					<FormControl
 						type="time"
 						v-model="newSlot.end_time"
 						@focusout.stop="add()"
+						:disabled="!isSessionUser()"
 					/>
 				</div>
 
-				<Button @click="showSlotsTemplate = 1">
+				<Button v-if="isSessionUser()" @click="showSlotsTemplate = 1">
 					<template #prefix>
 						<Plus class="w-4 h-4 stroke-1.5 text-ink-gray-7" />
 					</template>
@@ -98,6 +105,7 @@
 						type="date"
 						:label="__('From')"
 						v-model="from"
+						:disabled="!isSessionUser()"
 						@blur="
 							() => {
 								updateUnavailability.submit({
@@ -111,6 +119,7 @@
 						type="date"
 						:label="__('To')"
 						v-model="to"
+						:disabled="!isSessionUser()"
 						@blur="
 							() => {
 								updateUnavailability.submit({
@@ -122,7 +131,7 @@
 					/>
 				</div>
 			</div>
-			<div>
+			<div v-if="isSessionUser()">
 				<h2 class="mb-4 text-lg font-semibold text-ink-gray-9">
 					{{ __('My calendar') }}
 				</h2>
@@ -130,7 +139,7 @@
 					v-if="evaluator.data?.calendar && evaluator.data?.is_authorized"
 					class="flex items-center bg-surface-green-2 text-green-900 text-sm p-1 rounded-md mb-4 w-fit"
 				>
-					<Check class="h-4 w-4 stroke-1.5 mr-2" />
+					<Check class="h-4 w-4 stroke-1.5 me-2" />
 					{{ __('Your calendar is set.') }}
 				</div>
 				<Button @click="() => authorizeCalendar.submit()">
@@ -142,7 +151,7 @@
 </template>
 <script setup>
 import { createResource, FormControl, Button, Badge, toast } from 'frappe-ui'
-import { computed, reactive, ref, onMounted, inject } from 'vue'
+import { computed, reactive, ref, onMounted, inject, watch } from 'vue'
 import { convertToTitleCase } from '@/utils'
 import { Plus, X, Check, CircleAlert } from 'lucide-vue-next'
 
@@ -157,10 +166,18 @@ const props = defineProps({
 })
 
 onMounted(() => {
-	if (user.data?.name !== props.profile.data?.name) {
+	if (user.data?.name !== props.profile.data?.name && !hasHigherAccess()) {
 		window.location.href = `/user/${props.profile.data?.username}`
 	}
 })
+
+const hasHigherAccess = () => {
+	return user.data?.is_evaluator || user.data?.is_moderator
+}
+
+const isSessionUser = () => {
+	return user.data?.email === props.profile.data?.name
+}
 
 const showSlotsTemplate = ref(0)
 const from = ref(null)
@@ -178,15 +195,34 @@ const evaluator = createResource({
 		evaluator: props.profile.data?.name,
 	},
 	auto: true,
-	onSuccess(data) {
-		if (data.slots.unavailable_from) from.value = data.slots.unavailable_from
-		if (data.slots.unavailable_to) to.value = data.slots.unavailable_to
+	onError(err) {
+		toast.error(err.messages?.[0] || err)
+		console.error(err)
 	},
 })
+
+watch(evaluator, () => {
+	if (evaluator.data?.slots?.unavailable_from)
+		from.value = evaluator.data.slots.unavailable_from
+	if (evaluator.data?.slots?.unavailable_to)
+		to.value = evaluator.data.slots.unavailable_to
+
+	evaluator.data?.slots?.schedule.forEach((slot) => {
+		slot.start_time = formatTime(slot.start_time)
+		slot.end_time = formatTime(slot.end_time)
+	})
+})
+
+const formatTime = (time) => {
+	if (!time) return ''
+	const [hour, minute] = time.split(':')
+	return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+}
 
 const createSlot = createResource({
 	url: 'frappe.client.insert',
 	makeParams(values) {
+		console.log(evaluator.data)
 		return {
 			doc: {
 				doctype: 'Evaluator Schedule',
