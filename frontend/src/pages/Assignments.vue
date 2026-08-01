@@ -1,125 +1,73 @@
 <template>
-	<header
-		class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
+	<ListPage
+		:breadcrumbs="breadcrumbs"
+		:title="__('{0} Assignments').format(totalAssignments.data || 0)"
+		layout="list"
+		:columns="assignmentColumns"
+		:rows="assignments.data || []"
+		:list-options="listOptions"
+		:total-count="totalAssignments.data ?? 0"
+		:loading="assignments.list.loading"
+		:has-next-page="assignments.hasNextPage"
+		v-model:page-length="pageLength"
+		empty-name="Assignments"
+		empty-icon="lucide-clipboard-list"
+		@load-more="assignments.next()"
 	>
-		<Breadcrumbs :items="breadcrumbs" />
-		<Button
-			v-if="!readOnlyMode"
-			variant="solid"
-			@click="
-				() => {
-					assignmentID = 'new'
-					showAssignmentForm = true
-				}
-			"
-		>
-			<template #prefix>
-				<Plus class="w-4 h-4" />
-			</template>
-			{{ __('Create') }}
-		</Button>
-	</header>
-
-	<div class="py-5">
-		<div
-			class="flex flex-col md:flex-row md:items-center space-y-4 md:space-y-0 justify-between mb-5 mx-5"
-		>
-			<div class="text-lg font-semibold text-ink-gray-9">
-				{{ __('{0} Assignments').format(assignments.data?.length) }}
-			</div>
-			<div class="grid grid-cols-2 gap-5">
-				<FormControl
-					v-model="titleFilter"
-					:placeholder="__('Search by Title')"
-				/>
-				<FormControl
-					v-model="typeFilter"
-					type="select"
-					:options="assignmentTypes"
-					:placeholder="__('Type')"
-				/>
-			</div>
-		</div>
-		<ListView
-			v-if="assignments.data?.length"
-			:columns="assignmentColumns"
-			:rows="assignments.data"
-			row-key="name"
-			:options="{
-				showTooltip: false,
-				selectable: true,
-				onRowClick: (row) => {
-					if (readOnlyMode) return
-					assignmentID = row.name
-					showAssignmentForm = true
-				},
-			}"
-			class="h-[71vh] lg:h-[79vh] px-5"
-		>
-			<ListHeader
-				class="mb-2 grid items-center rounded bg-surface-white border-b rounded-none p-2"
+		<template #actions>
+			<Button
+				v-if="!readOnlyMode"
+				variant="solid"
+				@click="
+					() => {
+						assignmentID = 'new'
+						showAssignmentForm = true
+					}
+				"
 			>
-				<ListHeaderItem :item="item" v-for="item in assignmentColumns">
-					<template #prefix="{ item }">
-						<FeatherIcon :name="item.icon?.toString()" class="h-4 w-4" />
-					</template>
-				</ListHeaderItem>
-			</ListHeader>
-			<ListRows>
-				<ListRow
-					v-for="row in assignments.data"
-					:row="row"
-					class="hover:bg-surface-gray-2"
-				>
-					<template #default="{ column, item }">
-						<ListRowItem :item="row[column.key]" :align="column.align">
-							<div v-if="column.key == 'show_answers'">
-								<FormControl
-									type="checkbox"
-									v-model="row[column.key]"
-									:disabled="true"
-								/>
-							</div>
-							<div
-								v-else-if="column.key == 'modified'"
-								class="text-sm text-ink-gray-5"
-							>
-								{{ row[column.key] }}
-							</div>
-							<div v-else>
-								{{ row[column.key] }}
-							</div>
-						</ListRowItem>
-					</template>
-				</ListRow>
-			</ListRows>
-			<ListSelectBanner class="bottom-50">
-				<template #actions="{ unselectAll, selections }">
-					<div class="flex gap-2">
-						<Button
-							variant="ghost"
-							@click="deleteAssignment(selections, unselectAll)"
-						>
-							<FeatherIcon name="trash-2" class="h-4 w-4 stroke-1.5" />
-						</Button>
-					</div>
+				<template #prefix>
+					<span class="lucide-plus size-4" />
 				</template>
-			</ListSelectBanner>
-		</ListView>
-		<div v-else class="h-[53vh]">
-			<EmptyState type="Assignments" />
-		</div>
-		<div class="flex items-center justify-end gap-x-3 pt-3 border-t px-5">
-			<Button v-if="assignments.hasNextPage" @click="assignments.next()">
-				{{ __('Load More') }}
+				{{ __('Create') }}
 			</Button>
-			<div v-if="assignments.hasNextPage" class="h-8 border-s"></div>
-			<div class="text-ink-gray-5">
-				{{ assignments.data?.length }} {{ __('of') }}
-				{{ totalAssignments.data }}
+		</template>
+
+		<template #filters>
+			<FormControl
+				type="text"
+				v-model="titleFilter"
+				:placeholder="__('Search')"
+				:aria-label="__('Search')"
+			>
+				<template #prefix>
+					<span class="lucide-search size-4 text-ink-gray-5" />
+				</template>
+			</FormControl>
+			<Select
+				v-model="typeFilter"
+				:options="assignmentTypes"
+				:placeholder="__('Type')"
+			/>
+		</template>
+
+		<template #cell="{ column, value }">
+			<div v-if="column.key == 'modified'" class="text-sm text-ink-gray-5">
+				{{ value }}
 			</div>
-		</div>
-	</div>
+			<div v-else>{{ value }}</div>
+		</template>
+
+		<template #selection-actions="{ unselectAll, selections }">
+			<Button
+				variant="ghost"
+				:label="__('Delete')"
+				@click="deleteAssignment(selections, unselectAll)"
+			>
+				<span class="lucide-trash-2 h-4 w-4" />
+			</Button>
+		</template>
+	</ListPage>
+
 	<AssignmentForm
 		v-model="showAssignmentForm"
 		v-model:assignments="assignments"
@@ -128,29 +76,19 @@
 </template>
 <script setup>
 import {
-	Breadcrumbs,
 	Button,
-	call,
 	createListResource,
 	createResource,
 	FormControl,
-	ListView,
-	ListHeader,
-	ListHeaderItem,
-	ListRows,
-	ListRow,
-	ListRowItem,
-	ListSelectBanner,
-	FeatherIcon,
 	toast,
 	usePageMeta,
 } from 'frappe-ui'
+import ListPage from '@/components/Layouts/ListPage.vue'
+import Select from '@/components/Controls/Select.vue'
 import { computed, inject, onMounted, ref, watch } from 'vue'
-import { Plus } from 'lucide-vue-next'
 import { useRouter, useRoute } from 'vue-router'
 import { sessionStore } from '../stores/session'
 import AssignmentForm from '@/components/Modals/AssignmentForm.vue'
-import EmptyState from '@/components/EmptyState.vue'
 
 const user = inject('$user')
 const dayjs = inject('$dayjs')
@@ -212,6 +150,7 @@ const assignments = createListResource({
 	fields: ['name', 'title', 'type', 'modified', 'question', 'course'],
 	orderBy: 'modified desc',
 	cache: ['assignments'],
+	pageLength: 24,
 	transform(data) {
 		return data.map((row) => {
 			return {
@@ -221,6 +160,26 @@ const assignments = createListResource({
 		})
 	},
 })
+
+const pageLength = computed({
+	get: () => assignments.pageLength,
+	set: (value) => {
+		// reload() ignores a new pageLength while start > 0: it refetches the
+		// already loaded rows instead, so paging must be reset for it to apply.
+		assignments.update({ pageLength: value, start: 0 })
+		assignments.reload()
+	},
+})
+
+const listOptions = computed(() => ({
+	showTooltip: false,
+	selectable: true,
+	onRowClick: (row) => {
+		if (readOnlyMode) return
+		assignmentID.value = row.name
+		showAssignmentForm.value = true
+	},
+}))
 
 const totalAssignments = createResource({
 	url: 'frappe.client.get_count',
@@ -242,21 +201,21 @@ const assignmentColumns = computed(() => {
 			label: __('Title'),
 			key: 'title',
 			width: 1,
-			icon: 'file-text',
+			icon: 'lucide-file-text',
 		},
 		{
 			label: __('Type'),
 			key: 'type',
 			width: 1,
 			align: 'left',
-			icon: 'tag',
+			icon: 'lucide-tag',
 		},
 		{
 			label: __('Updated On'),
 			key: 'modified',
 			width: 1,
 			align: 'right',
-			icon: 'clock',
+			icon: 'lucide-clock',
 		},
 	]
 })

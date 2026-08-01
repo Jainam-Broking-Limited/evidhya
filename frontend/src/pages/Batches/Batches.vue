@@ -1,115 +1,101 @@
 <template>
-	<header
-		class="sticky flex items-center justify-between top-0 z-10 border-b bg-surface-white px-3 py-2.5 sm:px-5"
+	<ListPage
+		:breadcrumbs="breadcrumbs"
+		:title="__('All Batches')"
+		:rows="batches.data || []"
+		:loading="batches.list.loading"
+		:total-count="batchCount"
+		:has-next-page="batches.hasNextPage"
+		v-model:page-length="pageLength"
+		empty-name="Batches"
+		empty-icon="lucide-users"
+		@load-more="batches.next()"
 	>
-		<Breadcrumbs :items="breadcrumbs" />
-		<Dropdown
-			v-if="canCreateBatch()"
-			:options="[
-				{
-					label: __('New Batch'),
-					icon: 'users',
-					onClick() {
-						showBatchModal = true
+		<template #actions>
+			<Dropdown
+				v-if="canCreateBatch()"
+				:options="[
+					{
+						label: __('New Batch'),
+						icon: 'lucide-users',
+						onClick() {
+							showBatchModal = true
+						},
 					},
-				},
-				{
-					label: __('Import Batch'),
-					icon: 'upload',
-					onClick() {
-						router.push({
-							name: 'NewDataImport',
-							params: { doctype: 'LMS Batch' },
-						})
+					{
+						label: __('Import Batch'),
+						icon: 'lucide-upload',
+						onClick() {
+							router.push({
+								name: 'NewDataImport',
+								params: { doctype: 'LMS Batch' },
+							})
+						},
 					},
-				},
-			]"
-		>
-			<template v-slot="{ open }">
-				<Button variant="solid">
-					<template #prefix>
-						<Plus class="h-4 w-4 stroke-1.5" />
-					</template>
-					{{ __('Create') }}
-					<template #suffix>
-						<ChevronDown
-							:class="[
-								'w-4 h-4 stroke-1.5 ms-1 transform transition-transform',
-								open ? 'rotate-180' : '',
-							]"
-						/>
-					</template>
-				</Button>
-			</template>
-		</Dropdown>
-	</header>
-	<div class="p-5 pb-10">
-		<div
-			class="flex flex-col lg:flex-row space-y-4 lg:space-y-0 lg:items-center justify-between mb-5"
-		>
-			<div class="text-lg text-ink-gray-9 font-semibold">
-				{{ __('All Batches') }}
-			</div>
-			<div
-				class="flex flex-col space-y-3 lg:space-y-0 lg:flex-row lg:items-center lg:gap-x-4"
+				]"
 			>
-				<TabButtons
-					v-if="user.data"
-					:buttons="batchTabs"
-					v-model="currentTab"
-					class="w-fit"
-				/>
-				<div class="grid grid-cols-2 gap-2">
-					<FormControl
-						v-model="title"
-						:placeholder="__('Search by Title')"
-						type="text"
-						class="min-w-40 lg:min-w-0 lg:w-32 xl:w-40"
-						@input="updateBatches()"
-					/>
-					<div class="min-w-40 lg:min-w-0 lg:w-32 xl:w-40">
-						<Select
-							v-if="categories.length"
-							v-model="currentCategory"
-							:options="categories"
-							:placeholder="__('Category')"
-							@update:modelValue="updateBatches()"
-						/>
-					</div>
-				</div>
+				<template v-slot="{ open }">
+					<Button variant="solid">
+						<template #prefix>
+							<span class="lucide-plus size-4" />
+						</template>
+						{{ __('Create') }}
+						<template #suffix>
+							<span
+								:class="[
+									'lucide-chevron-down ms-1 size-4 transform transition-transform',
+									open ? 'rotate-180' : '',
+								]"
+							/>
+						</template>
+					</Button>
+				</template>
+			</Dropdown>
+		</template>
 
-				<Tooltip :text="__('Only show batches that offer a certificate')">
-					<FormControl
-						type="checkbox"
-						v-model="certification"
-						:label="__('Certification')"
-						@change="updateBatches()"
-					/>
-				</Tooltip>
-			</div>
-		</div>
-		<div
-			v-if="batches.data?.length"
-			class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
-		>
+		<template #filters>
+			<TabButtons
+				v-if="user.data"
+				:options="batchTabs"
+				v-model="currentTab"
+				class="!w-fit shrink-0"
+			/>
+			<FormControl
+				v-model="title"
+				:placeholder="__('Search')"
+				:aria-label="__('Search')"
+				type="text"
+				@input="updateBatches()"
+			>
+				<template #prefix>
+					<span class="lucide-search size-4 text-ink-gray-5" />
+				</template>
+			</FormControl>
+			<ClearableCombobox
+				v-if="categories.length"
+				v-model="currentCategory"
+				:options="categories.filter((c) => c.value)"
+				:placeholder="__('Category')"
+				@update:modelValue="updateBatches()"
+			/>
+			<ToggleFilter
+				:modelValue="certification"
+				:label="__('Certification')"
+				:mobileLabel="__('Certification available')"
+				:tooltip="__('Only show batches that offer a certificate')"
+				@update:modelValue="setCertification"
+			/>
+		</template>
+
+		<template #card="{ row }">
 			<router-link
-				v-for="batch in batches.data"
-				:to="{ name: 'BatchDetail', params: { batchName: batch.name } }"
+				:to="{ name: 'BatchDetail', params: { batchName: row.name } }"
 			>
-				<BatchCard :batch="batch" />
+				<BatchCard :batch="row" />
 			</router-link>
-		</div>
-		<EmptyState v-else-if="!batches.list.loading" type="Batches" />
+		</template>
+	</ListPage>
 
-		<div
-			v-if="!batches.list.loading && batches.hasNextPage"
-			class="flex justify-center mt-5"
-		>
-			<Button @click="batches.next()">
-				{{ __('Load More') }}
-			</Button>
-		</div>
-	</div>
 	<NewBatchModal
 		v-if="showBatchModal"
 		v-model="showBatchModal"
@@ -118,29 +104,27 @@
 </template>
 <script setup>
 import {
-	Breadcrumbs,
 	Button,
 	createListResource,
+	createResource,
 	Dropdown,
 	FormControl,
-	Select,
-	Tooltip,
 	TabButtons,
 	usePageMeta,
 } from 'frappe-ui'
+import ClearableCombobox from '@/components/Controls/ClearableCombobox.vue'
+import ToggleFilter from '@/components/Controls/ToggleFilter.vue'
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronDown, Plus } from 'lucide-vue-next'
 import { sessionStore } from '@/stores/session'
 import BatchCard from '@/pages/Batches/components/BatchCard.vue'
-import EmptyState from '@/components/EmptyState.vue'
+import ListPage from '@/components/Layouts/ListPage.vue'
 import NewBatchModal from '@/pages/Batches/components/NewBatchModal.vue'
 
 const user = inject('$user')
 const dayjs = inject('$dayjs')
 const { brand } = sessionStore()
 const start = ref(0)
-const pageLength = ref(20)
 const categories = ref([])
 const currentCategory = ref(null)
 const title = ref('')
@@ -168,16 +152,32 @@ const setFiltersFromQuery = () => {
 	let queries = new URLSearchParams(location.search)
 	title.value = queries.get('title') || ''
 	currentCategory.value = queries.get('category') || null
-	certification.value = queries.get('certification') || false
+	// `|| false` would keep the raw string, so ?certification=false read as on.
+	certification.value = queries.get('certification') === 'true'
 }
 
 const batches = createListResource({
 	doctype: 'LMS Batch',
 	url: 'lms.lms.utils.get_batches',
 	cache: ['batches', user.data?.name],
-	pageLength: pageLength.value,
+	pageLength: 24,
 	start: start.value,
 })
+
+const pageLength = computed({
+	get: () => batches.pageLength,
+	set: (value) => {
+		// reload() ignores pageLength while start > 0 and refetches the rows
+		// already loaded, so a size change after Load More would do nothing.
+		batches.update({ pageLength: value, start: 0 })
+		batches.reload()
+	},
+})
+
+const setCertification = (value) => {
+	certification.value = value
+	updateBatches()
+}
 
 const setCategories = (data) => {
 	let allCategories = data.map((batch) => batch.category)
@@ -189,6 +189,19 @@ const setCategories = (data) => {
 	}
 }
 
+// Upcoming and Archived are settled against the current time in Python rather
+// than in the query, and `enrolled` is not a field, so only the endpoint that
+// resolves both can say how many batches a tab really holds.
+const batchCountResource = createResource({
+	url: 'lms.lms.utils.get_batch_count',
+	makeParams: () => ({ filters: filters.value }),
+	onError: (error) => {
+		console.error(error)
+	},
+})
+
+const batchCount = computed(() => batchCountResource.data ?? null)
+
 const updateBatches = () => {
 	updateFilters()
 	batches.update({
@@ -198,6 +211,10 @@ const updateBatches = () => {
 	batches.reload().then((data) => {
 		setCategories(data)
 	})
+	// Nothing orders the responses, so a slow count for a tab the user has
+	// left would overwrite the current one.
+	batchCountResource.abort()
+	batchCountResource.submit()
 }
 
 const updateFilters = () => {

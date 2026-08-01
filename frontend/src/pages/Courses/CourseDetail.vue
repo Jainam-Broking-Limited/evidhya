@@ -1,126 +1,410 @@
 <template>
-	<div v-if="course.data">
-		<header
-			class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
-		>
-			<Breadcrumbs class="h-7" :items="breadcrumbs" />
-			<div v-if="tabIndex == 2 && isAdmin" class="flex items-center gap-x-2">
-				<Badge v-if="childRef?.isDirty" theme="orange">
+	<TabbedDetailPage
+		ref="page"
+		:tabs="tabs"
+		:breadcrumbs="breadcrumbs"
+		:published="Boolean(course.data?.published)"
+		:loading="!course.data"
+		:doc="course"
+		doc-prop="course"
+	>
+		<template #actions="{ tab }">
+			<template v-if="tab?.key === 'settings' && courseFormRef">
+				<Badge v-if="courseFormRef.isDirty" theme="orange">
 					{{ __('Not Saved') }}
 				</Badge>
-				<Dropdown :options="courseMenu" side="left">
-					<template v-slot="{ open }">
-						<Button>
+				<Dropdown
+					:options="courseOptions"
+					:button="{
+						icon: 'lucide-ellipsis',
+						variant: 'ghost',
+						label: __('Course options'),
+					}"
+					side="bottom"
+					align="end"
+				/>
+				<Tooltip
+					v-if="!courseFormRef.isDirty"
+					:text="__('No changes to save')"
+					:hoverDelay="0.1"
+				>
+					<Button
+						variant="solid"
+						:disabled="true"
+						:class="isMobile ? '!size-9' : ''"
+					>
+						<span v-if="isMobile" class="lucide-save size-4" />
+						<span v-else>{{ __('Save') }}</span>
+					</Button>
+				</Tooltip>
+				<ShortcutTooltip v-else :label="__('Save')" combo="Mod+S">
+					<Button
+						variant="solid"
+						:class="isMobile ? '!size-9' : ''"
+						@click="courseFormRef.submitCourse()"
+					>
+						<span v-if="isMobile" class="lucide-save size-4" />
+						<span v-else>{{ __('Save') }}</span>
+					</Button>
+				</ShortcutTooltip>
+			</template>
+			<template v-if="tab?.key === 'editor' && editorSelected">
+				<Tooltip
+					v-if="courseEditorRef?.lessonHasVideo"
+					:text="__('Video Statistics')"
+				>
+					<Button
+						variant="ghost"
+						:label="__('Video Statistics')"
+						:class="isMobile ? '!size-9' : ''"
+						@click="courseEditorRef?.openVideoStats()"
+					>
+						<template #icon>
+							<span class="lucide-trending-up size-4" />
+						</template>
+					</Button>
+				</Tooltip>
+				<Tooltip v-if="!isMobile" :text="__('How to edit a lesson')">
+					<Button
+						variant="ghost"
+						:label="__('How to edit a lesson')"
+						@click="showLessonHelp = true"
+					>
+						<template #icon>
+							<span class="lucide-info size-4" />
+						</template>
+					</Button>
+				</Tooltip>
+				<router-link
+					:to="{
+						name: 'Lesson',
+						params: {
+							courseName: props.courseName,
+							chapterNumber: editorSelected.chapterNumber,
+							lessonNumber: editorSelected.lessonNumber,
+						},
+						query: { studentView: 1 },
+					}"
+				>
+					<Tooltip v-if="isMobile" :text="__('Student View')">
+						<Button variant="outline" class="!size-9">
 							<template #icon>
-								<Ellipsis class="w-4 h-4 stroke-1.5" />
+								<span class="lucide-eye size-4" />
 							</template>
 						</Button>
+					</Tooltip>
+					<Button v-else variant="outline">
+						<template #prefix>
+							<span class="lucide-eye size-4" />
+						</template>
+						{{ __('Student View') }}
+					</Button>
+				</router-link>
+			</template>
+			<Button
+				v-if="tab?.key === 'dashboard' && course.data && isMobile"
+				variant="outline"
+				class="!size-9"
+				:tooltip="__('Enroll')"
+				@click="courseDashboardRef?.openEnrollModal()"
+			>
+				<template #icon>
+					<span class="lucide-plus size-4" />
+				</template>
+			</Button>
+			<Button
+				v-else-if="tab?.key === 'dashboard' && course.data"
+				variant="outline"
+				@click="courseDashboardRef?.openEnrollModal()"
+			>
+				<template #prefix>
+					<span class="lucide-plus size-4" />
+				</template>
+				{{ __('Enroll') }}
+			</Button>
+			<Button
+				v-if="tab?.key === 'settings' && user.data?.is_moderator && !isMobile"
+				:variant="course.data?.published ? 'outline' : 'solid'"
+				:theme="course.data?.published ? 'red' : 'gray'"
+				:loading="publishToggle.loading"
+				@click="togglePublishCourse"
+			>
+				{{ course.data?.published ? __('Unpublish') : __('Publish') }}
+			</Button>
+		</template>
+
+		<template #solo>
+			<CourseOverview v-if="course.data" :course="course" />
+			<SkeletonLoader v-else variant="course-page" />
+		</template>
+
+		<template #tab-body-editor>
+			<div
+				v-if="isMobile && editorSelected"
+				class="flex items-center gap-2 border-b bg-surface-base px-3 py-2"
+			>
+				<Button
+					variant="subtle"
+					class="!size-9"
+					:label="__('Previous lesson')"
+					:disabled="!courseEditorRef?.hasPrev"
+					@click="courseEditorRef?.goPrev()"
+				>
+					<template #icon>
+						<span class="lucide-chevron-left size-4" />
 					</template>
-				</Dropdown>
-				<Button variant="solid" @click="childRef.submitCourse()">
-					{{ __('Save') }}
+				</Button>
+				<div
+					class="min-w-0 flex-1 text-center text-p-xs font-medium tabular-nums text-ink-gray-5"
+				>
+					<span v-if="courseEditorRef?.lessonTotal">
+						{{ courseEditorRef?.lessonIndex }} /
+						{{ courseEditorRef?.lessonTotal }}
+					</span>
+				</div>
+				<Button
+					variant="subtle"
+					class="!size-9"
+					:label="__('Next lesson')"
+					:disabled="!courseEditorRef?.hasNext"
+					@click="courseEditorRef?.goNext()"
+				>
+					<template #icon>
+						<span class="lucide-chevron-right size-4" />
+					</template>
 				</Button>
 			</div>
-		</header>
-		<CourseOverview v-if="!isAdmin" :course="course" />
-		<div v-else>
-			<Tabs :tabs="tabs" v-model="tabIndex">
-				<template #tab-panel="{ tab }">
-					<component :is="tab.component" :course="course" ref="childRef" />
+			<CourseEditor
+				ref="courseEditorRef"
+				:course="course"
+				v-model:selected="editorSelected"
+			/>
+		</template>
+
+		<template #overlay="{ tab }">
+			<!-- Chapters as a floating pill rather than a header icon: on a phone
+			     the outline is the control you reach for most while editing, and
+			     the bottom-right corner is where a thumb already is. Uses the
+			     ordinary outline Button so it carries espresso's surface, border
+			     and ink tokens instead of an ad-hoc dark fill. -->
+			<Button
+				v-if="isMobile && tab?.key === 'editor'"
+				variant="outline"
+				size="md"
+				class="absolute bottom-4 end-4 z-10 !h-11 !rounded-full !px-4 !shadow-lg"
+				@click="courseEditorRef?.openChapters()"
+			>
+				<template #prefix>
+					<span class="lucide-layers size-4" />
 				</template>
-			</Tabs>
-		</div>
-	</div>
+				{{ __('Chapters') }}
+			</Button>
+
+			<div
+				v-if="tab?.key === 'editor' && course.data"
+				class="pointer-events-none absolute inset-x-0 top-0 z-10 hidden md:flex"
+			>
+				<div class="w-[70%]" />
+				<div
+					class="pointer-events-auto flex w-[30%] items-center justify-between gap-x-2 border-s border-b bg-surface-base p-1 px-5"
+				>
+					<div class="py-2.5 text-base-medium text-ink-gray-9">
+						{{ __('Chapters') }}
+					</div>
+					<Button size="sm" @click="courseEditorRef?.openAddChapter()">
+						<template #prefix>
+							<span class="lucide-plus size-4" />
+						</template>
+						{{ __('Add') }}
+					</Button>
+				</div>
+			</div>
+		</template>
+	</TabbedDetailPage>
+	<LessonHelp v-model="showLessonHelp" />
 </template>
-<script setup>
+<script setup lang="ts">
+import { computed, inject, markRaw, ref, useTemplateRef, watch } from 'vue'
+import type { ComputedRef } from 'vue'
+import { useRouter } from 'vue-router'
+import type { Router } from 'vue-router'
 import {
 	Badge,
-	Breadcrumbs,
 	Button,
-	call,
 	createResource,
 	Dropdown,
-	Tabs,
+	Tooltip,
 	toast,
 	usePageMeta,
 } from 'frappe-ui'
-import { computed, inject, markRaw, onMounted, ref, watch } from 'vue'
 import { sessionStore } from '@/stores/session'
-import { useRouter, useRoute } from 'vue-router'
-import {
-	Download,
-	Ellipsis,
-	List,
-	Settings2,
-	Trash2,
-	TrendingUp,
-} from 'lucide-vue-next'
+import { useScreenSize } from '@/utils/composables'
+import TabbedDetailPage from '@/components/Layouts/TabbedDetailPage.vue'
+import type { DetailTab } from '@/components/Layouts/TabbedDetailPage.vue'
 import CourseOverview from '@/pages/Courses/CourseOverview.vue'
+import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import CourseDashboard from '@/pages/Courses/CourseDashboard.vue'
+import CourseEditor from '@/pages/Courses/CourseEditor.vue'
 import CourseForm from '@/pages/Courses/CourseForm.vue'
+import LessonHelp from '@/components/LessonHelp.vue'
+import ShortcutTooltip from '@/components/ShortcutTooltip.vue'
+import type {
+	CourseDetails,
+	CourseInstructorInfo,
+	Resource,
+	SessionUser,
+} from '@/types'
 
-const { brand } = sessionStore()
-const router = useRouter()
-const route = useRoute()
-const user = inject('$user')
-const tabIndex = ref(0)
-const childRef = ref(null)
+type Brand = { name?: string; logo?: string; favicon?: string }
 
-const props = defineProps({
-	courseName: {
-		type: String,
-		required: true,
-	},
-})
+const { brand } = sessionStore() as { brand: Brand }
+const router: Router = useRouter()
+const user = inject<SessionUser>('$user')!
+const { isMobile } = useScreenSize()
 
-onMounted(() => {
-	updateTabIndex()
-})
-
-const updateTabIndex = () => {
-	const hash = route.hash
-	if (hash) {
-		tabs.value.forEach((tab, index) => {
-			if (tab.label?.toLowerCase() === hash.replace('#', '')) {
-				tabIndex.value = index
-			}
-		})
-	}
+interface EditorSelection {
+	chapterNumber: string
+	lessonNumber: string
+	number: string
+	title?: string
 }
 
-watch(tabIndex, () => {
-	const tab = tabs.value[tabIndex.value]
-	if (tab.label != route.hash.replace('#', '')) {
-		router.push({ ...route, hash: `#${tab.label.toLowerCase()}` })
-	}
+const editorSelected = ref<EditorSelection | null>(null)
+const showLessonHelp = ref(false)
+
+type CourseMenuItem = {
+	label: string
+	icon: string
+	theme?: string
+	onClick: () => void
+}
+type CourseFormApi = {
+	isDirty: boolean
+	submitCourse: () => void
+	courseMenu: CourseMenuItem[]
+}
+const page = useTemplateRef('page')
+
+const courseFormRef = computed<CourseFormApi | null>(
+	() => (page.value?.instanceFor('settings') ?? null) as CourseFormApi | null
+)
+
+type CourseDashboardApi = { openEnrollModal: () => void }
+const courseDashboardRef = computed<CourseDashboardApi | null>(
+	() =>
+		(page.value?.instanceFor('dashboard') ?? null) as CourseDashboardApi | null
+)
+
+type CourseEditorApi = {
+	saveSelectedLesson: () => void
+	isDirty: ComputedRef<boolean>
+	lessonHasVideo: ComputedRef<boolean>
+	openVideoStats: () => void
+	openAddChapter: () => void
+	lessonIndex: ComputedRef<number>
+	lessonTotal: ComputedRef<number>
+	hasPrev: ComputedRef<boolean>
+	hasNext: ComputedRef<boolean>
+	goPrev: () => void
+	goNext: () => void
+	openChapters: () => void
+}
+const courseEditorRef = ref<CourseEditorApi | null>(null)
+
+const publishToggle = createResource({
+	url: 'frappe.client.set_value',
+	makeParams() {
+		return {
+			doctype: 'LMS Course',
+			name: course.data?.name,
+			fieldname: 'published',
+			value: course.data?.published ? 0 : 1,
+		}
+	},
+	onSuccess() {
+		toast.success(
+			course.data?.published ? __('Course unpublished') : __('Course published')
+		)
+		course.reload()
+	},
+	onError(err: { messages?: string[] } | string) {
+		const msg =
+			typeof err === 'string'
+				? err
+				: err.messages?.[0] ?? __('Could not update publish status')
+		toast.error(msg)
+	},
+}) as Resource<unknown>
+
+// On a phone the publish toggle joins the ... menu, where it keeps a written
+// label — an icon-only globe gave no hint that it publishes the course.
+const courseOptions = computed<CourseMenuItem[]>(() => {
+	const menu = courseFormRef.value?.courseMenu ?? []
+	if (!isMobile.value || !user.data?.is_moderator) return menu
+	return [
+		{
+			label: course.data?.published
+				? __('Unpublish course')
+				: __('Publish course'),
+			icon: course.data?.published ? 'lucide-globe-lock' : 'lucide-globe',
+			onClick: () => togglePublishCourse(),
+		},
+		...menu,
+	]
 })
 
+function togglePublishCourse() {
+	publishToggle.submit()
+}
+
+const props = defineProps<{
+	courseName: string
+}>()
+
+// No `cache` key: it would be read once at setup, so the reload below — this
+// component is reused when you jump straight from one course to another — would
+// file the new course's data under the course you arrived on.
 const course = createResource({
 	url: 'lms.lms.utils.get_course_details',
-	cache: ['course', props.courseName],
 	makeParams() {
 		return {
 			course: props.courseName,
 		}
 	},
 	auto: true,
-})
+}) as Resource<CourseDetails | null>
 
-const tabs = ref([
+const tabs = computed<DetailTab[]>(() => [
 	{
+		key: 'overview',
 		label: __('Overview'),
 		component: markRaw(CourseOverview),
-		icon: List,
+		icon: 'lucide-list',
+		when: isAdmin.value,
+		flow: true,
 	},
 	{
+		key: 'dashboard',
 		label: __('Dashboard'),
 		component: markRaw(CourseDashboard),
-		icon: TrendingUp,
+		icon: 'lucide-trending-up',
+		when: isAdmin.value,
 	},
 	{
+		key: 'editor',
+		label: __('Course editor'),
+		shortLabel: __('Editor'),
+		component: markRaw(CourseEditor),
+		icon: 'lucide-book-open',
+		when: isAdmin.value,
+	},
+	{
+		key: 'settings',
 		label: __('Settings'),
 		component: markRaw(CourseForm),
-		icon: Settings2,
+		icon: 'lucide-settings-2',
+		when: isAdmin.value,
+		flow: true,
 	},
 ])
 
@@ -139,9 +423,9 @@ watch(course, () => {
 	}
 })
 
-const isInstructor = () => {
+const isInstructor = (): boolean => {
 	let user_is_instructor = false
-	course.data?.instructors.forEach((instructor) => {
+	course.data?.instructors.forEach((instructor: CourseInstructorInfo) => {
 		if (!user_is_instructor && instructor.name == user.data?.name) {
 			user_is_instructor = true
 		}
@@ -149,100 +433,28 @@ const isInstructor = () => {
 	return user_is_instructor
 }
 
-const isAdmin = computed(() => {
-	return user.data?.is_moderator || isInstructor()
-})
-
-const exportCourse = async () => {
-	try {
-		const response = await fetch(
-			'/api/method/lms.lms.api.export_course_as_zip?course_name=' +
-				course.data.name,
-			{
-				method: 'GET',
-				credentials: 'include',
-			}
-		)
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			console.error('Error response:', errorText)
-			throw new Error('Download failed')
-		}
-
-		const blob = await response.blob()
-		const disposition = response.headers.get('Content-Disposition')
-		let filename = 'course.zip'
-		if (disposition && disposition.includes('filename=')) {
-			filename = disposition.split('filename=')[1].replace(/"/g, '')
-		}
-
-		const url = window.URL.createObjectURL(blob)
-
-		const a = document.createElement('a')
-		a.href = url
-		a.download = filename
-		document.body.appendChild(a)
-		a.click()
-
-		a.remove()
-		window.URL.revokeObjectURL(url)
-	} catch (err) {
-		console.error(err)
-		toast.error('Export failed')
-	}
-}
-
-const download_course_zip = (data) => {
-	const a = document.createElement('a')
-	a.href = data.export_url
-	a.download = data.name
-	a.click()
-}
-
-const courseMenu = computed(() => {
-	let options = [
-		{
-			label: __('Export'),
-			onClick() {
-				exportCourse()
-			},
-			icon: Download,
-		},
-		{
-			label: __('Delete'),
-			onClick() {
-				childRef.value.trashCourse()
-			},
-			icon: Trash2,
-		},
-	]
-	return options
+const isAdmin = computed<boolean>(() => {
+	return Boolean(user.data?.is_moderator) || isInstructor()
 })
 
 const breadcrumbs = computed(() => {
-	let crumbs = [{ label: __('Courses'), route: { name: 'Courses' } }]
-	crumbs.push({
-		label: course?.data?.title,
-		route: { name: 'CourseDetail', params: { courseName: course?.data?.name } },
-	})
+	const crumbs: {
+		label: string
+		route: { name: string; params?: Record<string, string> }
+	}[] = [{ label: __('Courses'), route: { name: 'Courses' } }]
+	if (course.data) {
+		crumbs.push({
+			label: course.data.title,
+			route: { name: 'CourseDetail', params: { courseName: course.data.name } },
+		})
+	}
 	return crumbs
 })
 
 usePageMeta(() => {
 	return {
-		title: course?.data?.title,
+		title: course.data?.title,
 		icon: brand.favicon,
 	}
 })
 </script>
-<style>
-.avatar-group {
-	display: inline-flex;
-	align-items: center;
-}
-
-.avatar-group .avatar {
-	transition: margin 0.1s ease-in-out;
-}
-</style>
